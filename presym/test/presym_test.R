@@ -9,8 +9,8 @@ library(stats)
 # Incubation period (Lognormal): mean = 4.4, median = 4.1, 25th = 3.2, 75th = 5.3 
 # source EpiLPS using data set from Backer et al. 2020
 # Approximate the lognormal parameters
-incubation_meanlog <- log(4.4)  # Approximate mean of the log-transformed data
-incubation_sdlog <- (log(5.3) - log(3.2)) / (2 * qnorm(0.75)) # Approximate SD of log-transformed data
+incubation_meanlog <- 1.417
+incubation_sdlog <- 0.381
 
 # Serial interval (Normal): mean = 4.6, SD = 4.4
 # source Yang et al. 2020 
