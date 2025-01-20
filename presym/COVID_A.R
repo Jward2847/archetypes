@@ -81,13 +81,11 @@ incubation_pdf <- function(x) dgamma(x, shape = incubation_shape, rate = incubat
 serial_pdf <- function(x) dgamma(x, shape = serial_shape, rate = serial_rate)
 
 # Calculate Intersection and Pre-symptomatic Transmission
-intersection <- uniroot(function(x) incubation_pdf(x) - serial_pdf(x), lower = 0, upper = 2)$root
-pre_symptomatic <- (pgamma(intersection, shape = serial_shape, rate = serial_rate) - 
-                      pgamma(intersection, shape = incubation_shape, rate = incubation_rate)) * 100
+v <- uniroot(\(x)incubation_pdf(x) - serial_pdf(x), lower = 0, upper = 2)$root
+pre_symptomatic <-( pnorm(v, serial_mean, serial_sd) - plnorm(v, incubation_meanlog, incubation_sdlog)) * 100
 
-cat("Percentage of pre-symptomatic transmission:", pre_symptomatic, "%\n")
-
-
+# Percentage of pre-symptomatic transmission
+cat("Percentage of pre-symptomatic transmission:",pre_symptomatic, "%")
 
 
 # Visualization

@@ -23,11 +23,11 @@ incubation_pdf <- function(x) dweibull(x, shape = weibull_shape, scale = weibull
 serial_pdf <- function(x) dgamma(x, shape = gamma_shape, rate = gamma_rate)
 
 # Estimate intersection and pre-symptomatic transmission
-intersection <- uniroot(function(x) incubation_pdf(x) - serial_pdf(x), lower = 0, upper = 15)$root
-pre_symptomatic <- (pgamma(intersection, shape = gamma_shape, rate = gamma_rate) - 
-                      pweibull(intersection, shape = weibull_shape, scale = weibull_scale)) * 100
+v <- uniroot(\(x)incubation_pdf(x) - serial_pdf(x), lower = 5, upper = 10)$root
+pre_symptomatic <-( pnorm(v, serial_mean, serial_sd) - plnorm(v, incubation_meanlog, incubation_sdlog)) * 100
 
-cat("Percentage of pre-symptomatic transmission:", pre_symptomatic, "%\n")
+# Percentage of pre-symptomatic transmission
+cat("Percentage of pre-symptomatic transmission:",pre_symptomatic, "%")
 
 # Visualization
 time_range <- seq(0, 20, by = 0.1)
