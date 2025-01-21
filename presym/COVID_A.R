@@ -1,3 +1,4 @@
+
 library(ggplot2)
 library(stats)
 
@@ -21,12 +22,12 @@ serial_rate <- 0.44
 incubation_pdf <- function(x) dgamma(x, shape = incubation_shape, rate = incubation_rate)
 serial_pdf <- function(x) dgamma(x, shape = serial_shape, rate = serial_rate)
 
-# Calculate Intersection and Pre-symptomatic Transmission
-v <- uniroot(\(x)incubation_pdf(x) - serial_pdf(x), lower = 0, upper = 2)$root
-pre_symptomatic <-( pnorm(v, serial_mean, serial_sd) - plnorm(v, incubation_meanlog, incubation_sdlog)) * 100
+# Calculate intersection point and pre-symptomatic transmission
+intersection <- uniroot(function(x) incubation_pdf(x) - serial_pdf(x), lower = 0.01, upper = 3)$root
+pre_symptomatic <- (pgamma(intersection, shape = serial_shape, rate = serial_rate) - 
+                      pgamma(intersection, shape = incubation_shape, rate = incubation_rate)) * 100
 
-# Percentage of pre-symptomatic transmission
-cat("Percentage of pre-symptomatic transmission:",pre_symptomatic, "%")
+cat("Percentage of pre-symptomatic transmission:", pre_symptomatic, "%\n")
 
 
 # Visualization
