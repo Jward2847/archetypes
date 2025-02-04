@@ -10,32 +10,9 @@ library(cmdstanr)
 
 # Loading in data
 data_files <- list(
-  "lassa" = "presym/Lassa/lassa_ob.csv")
-
-#Load both sets in
-data_files <- list(
-  "lassa_1" = "presym/Lassa/lassa_ob.csv",
-  "lassa_2" = "presym/Lassa/lassa_ll.csv"
-)
-
-
+  "lassa" = "presym/CCHF/CCHF.csv")
 
 data_tables <- lapply(data_files, fread)
-
-# Combining data.tables for panels from both lassa datasets
-# Ensure merging works correctly by explicitly joining on "days"
-dt_onsets <- merge(
-  data_tables$lassa_1[, .(days, onsets_lassa_1 = count)],
-  data_tables$lassa_2[, .(days, onsets_lassa_2 = count)],
-  by = "days",      # Merge on the "days" column
-  all = TRUE        # Keep all rows even if one table lacks certain days
-)[
-  , onsets := fifelse(is.na(onsets_lassa_1), 0, onsets_lassa_1) + 
-    fifelse(is.na(onsets_lassa_2), 0, onsets_lassa_2)
-][
-  , .(days, onsets) # Select final columns
-]
-
 
 
 # one single data set dataset creation
