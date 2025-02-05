@@ -10,7 +10,7 @@ library(cmdstanr)
 
 # Loading in data
 data_files <- list(
-  "lassa" = "presym/Lassa/lassa_ob.csv")
+  "lassa" = "presym/Lassa/lassa_ll.csv")
 
 #Load both sets in
 data_files <- list(
@@ -114,19 +114,19 @@ dt_si_posteriors <- rbind(
   dt_lognormal[, type := "Lognormal"],
   dt_gamma[, type := "Gamma"])
 
-# Summarise distributions
+# Summarise distributions using quantiles (more robust for skewed data)
 dt_summary_median <- dt_si_posteriors[, .(
   me = median(value),
-  lo = median(value) - IQR(value),
-  hi = median(value) + IQR(value)),
-  by = "type"][, average := "Median"]
+  lo = quantile(value, 0.25),  # 25th percentile
+  hi = quantile(value, 0.75)   # 75th percentile
+), by = "type"][, average := "Median"]
 
-# Summarise distributions
 dt_summary_mean <- dt_si_posteriors[, .(
-  me = mean(value), 
-  lo = mean(value) - IQR(value),
-  hi = mean(value) + IQR(value)), 
-  by = "type"][, average := "Mean"]
+  me = mean(value),
+  lo = quantile(value, 0.025), # 2.5th percentile (Lower 95% CI)
+  hi = quantile(value, 0.975)  # 97.5th percentile (Upper 95% CI)
+), by = "type"][, average := "Mean"]
+
 
 # Creating PMF of underlying data for plotting behind fitted distributions
 dt_onsets_plot <- rbind(
@@ -159,12 +159,13 @@ p_si <- ggplot() +
   theme_linedraw() +
   theme(legend.position = "none") +
   labs(x = "Time (days since exposure)", y = "Density") +
-  lims(x = c(0, 30))
+  lims(x = c(0, 55))
 
-ggsave("plots/serial_interval.png", p_si, width = 8, height = 4)
+ggsave("presym/Lassa/serial_interval.png", p_si, width = 8, height = 4)
 
 knitr::kable(
   rbind(dt_summary_median, dt_summary_mean)[order(type, average)])
+
 
 #--- LOO analysis 
 knitr::kable(loo_compare(fit_lognormal$loo(), fit_gamma$loo()))
@@ -193,10 +194,10 @@ param_summary <- rbind(
 knitr::kable(param_summary, digits = 3)
 
 # Save the parameter summary as CSV
-fwrite(param_summary, "data/si_param_summary.csv")
+fwrite(param_summary, "presym/Lassa/si_param_summary.csv")
 
 # Save the serial interval posteriors as CSV
-fwrite(dt_si_posteriors, "data/si_posteriors.csv")
+fwrite(dt_si_posteriors, "presym/Lassa/si_posteriors.csv")
 
 
 

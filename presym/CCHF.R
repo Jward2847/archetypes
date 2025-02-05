@@ -8,8 +8,8 @@ incubation_shape <- (incubation_mean^2) / incubation_variance
 incubation_rate <- incubation_mean / incubation_variance
 
 # Parameters for Serial Interval (Gamma)
-serial_shape <- 3.951
-serial_rate <- 0.333
+serial_shape <- 3.9227199
+serial_rate <- 0.3298345
 
 # Print fitted parameters
 cat("Incubation Period Parameters:\n")
@@ -45,7 +45,7 @@ ggplot(plot_data, aes(x = Time, y = PDF, color = Type)) +
   scale_color_manual(values = c("Incubation Period (Gamma)" = "blue", 
                                 "Serial Interval (Gamma)" = "red")) +
   labs(
-    title = "CCHF",
+    title = "CCHVF",
     x = "Time (days)",
     y = "Probability Density",
     color = ""

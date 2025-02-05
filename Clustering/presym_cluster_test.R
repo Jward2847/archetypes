@@ -35,6 +35,7 @@ route_SI <- route_SI %>%
     Pathogen == "Zika" ~ "ZIKV",
     Pathogen == "SARS" ~ "SARS-CoV-1",
     Pathogen == "MERS" ~ "MERS-CoV",
+    Pathogen == "CCHF" ~ "CCHFV",
     TRUE ~ Pathogen  # Keep other names unchanged
   ))
 
@@ -233,6 +234,7 @@ data <- data %>%
     Pathogen == "Zika" ~ "ZIKV",
     Pathogen == "SARS" ~ "SARS-CoV-1",
     Pathogen == "MERS" ~ "MERS-CoV",
+    Pathogen == "CCHF" ~ "CCHFV",
     TRUE ~ Pathogen  # Keep other names unchanged
   ))
 
@@ -296,7 +298,7 @@ dend_data <- as.dendrogram(hclust_res)
 dendro_data <- ggdendro::dendro_data(dend_data)
 
 # Create clusters by cutting the dendrogram
-clusters <- cutree(hclust_res, k = 3)  # Cut into 4 clusters (adjust as needed)
+clusters <- cutree(hclust_res, k = 5)  # Cut into 4 clusters (adjust as needed)
 
 # Add the clusters to the dendro_data$labels dataframe
 dendro_data$labels$cluster <- clusters[order.dendrogram(dend_data)]  # Match clusters to labels
@@ -316,7 +318,7 @@ ggplot() +
             aes(x = x, y = y, label = label, color = factor(cluster)), 
             hjust = 1, angle = 90, size = 7, fontface = "bold") +  # Bold text
   # Customize color scale for cluster color (considering colorblind-friendly palette)
-  scale_color_manual(values = c("blue", "red", "darkgrey", "#d4af37"), 
+  scale_color_manual(values = c("blue", "red", "darkgrey", "#d4af37","green"), 
                      name = "Cluster", 
                      labels = c("Cluster 1", "Cluster 2", "Cluster 3", "Cluster 4"),
                      guide = guide_legend(override.aes = list(size = 4, shape = 16))) +  # Ensure circles in the legend
