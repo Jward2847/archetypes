@@ -3,10 +3,11 @@ library(dplyr)
 library(readxl)
 library(ggplot2)
 library(ggrepel)
-library(factoextra)
 library(cluster)
 library(clustMixType)
 library(patchwork)
+library(factoextra)
+library(cowplot)
 
 rm(list = ls())
 
@@ -56,8 +57,6 @@ fviz_nbclust(data_scaled_5, kmeans, method = "wss")
 # Determine optimal clusters using the Silhouette method
 fviz_nbclust(data_scaled_5, kmeans, method = "silhouette")
 
-library(factoextra)
-library(cowplot)
 
 # Create the plots
 # Create the plots with increased text size
@@ -67,7 +66,8 @@ plot_wss <- fviz_nbclust(data_scaled_5, kmeans, method = "wss") +
     axis.title = element_text(size = 14),
     axis.text = element_text(size = 12),
     legend.title = element_text(size = 14),
-    legend.text = element_text(size = 12)
+    legend.text = element_text(size = 12),
+    plot.background = element_rect(color = "black", size = 1)
   )
 
 plot_silhouette <- fviz_nbclust(data_scaled_5, kmeans, method = "silhouette") + 
@@ -97,19 +97,42 @@ fviz_gap_stat(gap_stat)
 
 
 
-#Apply K-means Clustering
-# Set the number of clusters
-k <- 5
+
 
 # Apply K-means clustering
 set.seed(123)  # For reproducibility
-km_res_5 <- kmeans(data_scaled_5, centers = k, nstart = 25)
+km_res_4 <- kmeans(data_scaled_5, centers = 4, nstart = 25) 
+km_res_5 <- kmeans(data_scaled_5, centers = 5, nstart = 25)
+km_res_6 <- kmeans(data_scaled_5, centers = 6, nstart = 25)
 
 # View the clustering results
 km_res_5$cluster
 
-#Visualize the Clusters
-fviz_cluster(km_res_5, data = data_scaled_5)
+#Visualise the Clusters
+#K-means figure B
+clust_4 <- fviz_cluster(km_res_4, data = data_scaled_5, labelsize = 0) +  
+  labs(title = "K = 4") +  
+  theme(plot.title = element_text(size = 18, face = "bold"),
+        legend.text = element_text(size = 12), 
+        legend.title = element_text(size = 13, face = "bold"), 
+        axis.text = element_text(size = 12, face = "bold"), 
+        axis.title = element_text(size = 14, face = "bold"))
+
+clust_5 <- fviz_cluster(km_res_5, data = data_scaled_5, labelsize = 0) +  
+  labs(title = "K = 5") +  
+  theme(plot.title = element_text(size = 18, face = "bold"),
+        legend.text = element_text(size = 12), 
+        legend.title = element_text(size = 13, face = "bold"), 
+        axis.text = element_text(size = 12, face = "bold"), 
+        axis.title = element_text(size = 14, face = "bold"))
+
+clust_6 <- fviz_cluster(km_res_6, data = data_scaled_5, labelsize = 0) +  
+  labs(title = "K = 6") +  
+  theme(plot.title = element_text(size = 18, face = "bold"),
+        legend.text = element_text(size = 12), 
+        legend.title = element_text(size = 13, face = "bold"), 
+        axis.text = element_text(size = 12, face = "bold"), 
+        axis.title = element_text(size = 14, face = "bold"))
 
 #Add Cluster Information to the Original Data
 route_SI$cluster <- km_res_5$cluster
@@ -126,64 +149,73 @@ data_with_clusters <- data.frame(Pathogen = route_SI$Pathogen, data_scaled_5, cl
 
 # Visualize the clusters and label them with pathogen names 4 cluster
 
-fviz_cluster(km_res_5, 
+main_clust <- fviz_cluster(km_res_5, 
              data = data_scaled_5, 
              geom = "point", 
-             labelsize = 4, 
+             labelsize = 3, 
              pointsize = 4, 
              ellipse.alpha = 0.3) +  
   geom_label_repel(aes(label = route_SI$Pathogen), 
-                   size = 6, 
+                   size = 4,  # Increase text size
                    fontface = "bold", 
                    color = "black", 
-                   box.padding = 1.5, 
-                   point.padding = 1.2, 
-                   segment.color = "grey50", 
-                   force = 2, 
-                   force_pull = 0.8, 
+                   fill = "white",  # Add a white background for readability
+                   box.padding = 4,  # Increase padding around labels
+                   point.padding = 1,  # Increase spacing from points
+                   segment.color = "black",  # Make connecting lines more visible
+                   segment.size = 0.5,  # Make the segment line thinner
+                   force = 4,  # Increase force to spread labels
+                   force_pull = 1,  # Make labels less likely to overlap
                    max.overlaps = Inf, 
                    show.legend = FALSE) +  
-  labs(title = "", 
-       color = "Cluster") +  
+  labs(title = "") +
+       #color = "Cluster") +  
   theme_classic(base_size = 20) +  
   theme(legend.position = "right",  
         legend.text = element_text(size = 14), 
         legend.title = element_text(size = 16, face = "bold"), 
         axis.text = element_text(size = 18), 
-        axis.title = element_text(size = 20, face = "bold")) +  
-  scale_color_manual(values = c("darkgrey", "blue", "red", "#d4af37", "black")) +
-  scale_fill_manual(values = c("darkgrey", "blue", "red", "#d4af37", "black"))
+        axis.title = element_text(size = 20, face = "bold"),
+        plot.background = element_rect(color = "black", size = 1)) +  
+  scale_color_manual(values = c("red", "darkgreen", "orange", "purple", "blue")) +
+  scale_fill_manual(values = c("red", "darkgreen", "orange", "purple", "blue"))
 
 
-# Visualize the clusters and label them with pathogen names 3 clusters
+#Create figure
 
-fviz_cluster(km_res_5, 
-             data = data_scaled_5, 
-             geom = "point", 
-             labelsize = 4, 
-             pointsize = 4, 
-             ellipse.alpha = 0.3) +  
-  geom_text_repel(aes(label = route_SI$Pathogen), 
-                  size = 6, 
-                  fontface = "bold", 
-                  color = "black", 
-                  box.padding = 1.5, 
-                  point.padding = 1.2, 
-                  segment.color = "grey50", 
-                  force = 2, 
-                  force_pull = 0.8, 
-                  max.overlaps = Inf,
-                  show.legend = FALSE) +  
-  labs(title = "", 
-       color = "Cluster") +  
-  theme_classic(base_size = 20) +  
-  theme(legend.position = "right",  
-        legend.text = element_text(size = 14), 
-        legend.title = element_text(size = 16, face = "bold"), 
-        axis.text = element_text(size = 18), 
-        axis.title = element_text(size = 20, face = "bold")) +  
-  scale_color_manual(values = c("red", "darkgrey", "blue", "#d4af37", "black")) +
-  scale_fill_manual(values = c("red", "darkgrey", "blue", "#d4af37", "black"))  # Ensure fill colors match
+# Combine K-means cluster plots into one panel (a)
+panel_a <- plot_grid(clust_4, clust_5, clust_6, ncol = 3, align = "hv")
+
+# Wrap panel_a with a single black border
+panel_a_boxed <- ggdraw() +
+  draw_plot(panel_a) +
+  annotate("rect", xmin = 0, xmax = 1, ymin = 0, ymax = 1, 
+           color = "black", size = 1, fill = NA)
+
+# Create the top panel with (a) and (b)
+top_panel <- plot_grid(
+  panel_a_boxed, plot_wss, 
+  labels = c("(a)", "(b)"), 
+  label_size = 18, 
+  ncol = 2, 
+  rel_widths = c(2, 1) # Make (a) wider than (b)
+)
+
+# Arrange the full figure layout
+kmeans_plot <- plot_grid(
+  top_panel, main_clust, 
+  labels = c("", "(c)"), 
+  label_size = 18, 
+  ncol = 1, 
+  rel_heights = c(1, 1.5) # Give more space to main_clust
+)
+
+
+#Save plot
+ggsave("Clustering/kmeans_fig.png", kmeans_plot, width = 14, height = 10)
+
+
+
 
 ########
 #Extract Cluster Centroids
