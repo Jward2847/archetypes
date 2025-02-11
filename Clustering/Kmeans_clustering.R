@@ -102,7 +102,7 @@ fviz_gap_stat(gap_stat)
 # Apply K-means clustering
 set.seed(123)  # For reproducibility
 km_res_4 <- kmeans(data_scaled_5, centers = 4, nstart = 25) 
-km_res_5 <- kmeans(data_scaled_5, centers = 6, nstart = 25)
+km_res_5 <- kmeans(data_scaled_5, centers = 5, nstart = 25)
 km_res_6 <- kmeans(data_scaled_5, centers = 6, nstart = 25)
 
 # View the clustering results
