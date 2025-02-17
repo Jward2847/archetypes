@@ -1,4 +1,7 @@
 
+#Code adapated from Epichains "how to estimate R and k from cluster size data"
+#https://github.com/epiverse-trace/howto/blob/3831f8c9f37b395f43a9385fb654798931046dcf/analyses/quantify_transmission/reproduction_number_cluster_size.qmd
+
 # check whether {pak} is installed
 if(!require("pak")) install.packages("pak")
 pak::pak("epiverse-trace/epiparameter")

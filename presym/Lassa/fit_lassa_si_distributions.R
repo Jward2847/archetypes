@@ -1,3 +1,7 @@
+#Code adapted from Ward et al. 2024
+#https://www.medrxiv.org/content/10.1101/2024.12.11.24318702v1
+#Can be found at https://github.com/jamesmbaazam/h5n1_uk_scenario_modelling
+
 # if primarycensored is not installed, install the development version from the
 # repository using this command:
 # devtools::install_github("epinowcast/primarycensored")
