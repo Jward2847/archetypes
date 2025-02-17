@@ -58,6 +58,7 @@ plot(hclust_res, labels = data$Pathogen, main = "Dendrogram of Pathogens (Mixed 
 plot_wss <- fviz_nbclust(as.matrix(gower_dist), FUN = hcut, method = "wss",
              hc_method = "complete", k.max = 10) +
   ggtitle("Optimal number of clusters") + 
+  labs(x = "Number of Clusters (K)") + 
   theme(
     plot.title = element_text(size = 12, face = "bold"),
     axis.title = element_text(size = 12),
@@ -66,6 +67,8 @@ plot_wss <- fviz_nbclust(as.matrix(gower_dist), FUN = hcut, method = "wss",
     legend.text = element_text(size = 12),
     plot.background = element_rect(color = "black", size = 1)
   )
+
+
 
 # Plot with colored clusters
 plot(hclust_res, labels = data$Pathogen, main = "Dendrogram of Pathogens")
@@ -83,7 +86,7 @@ dendro_data <- ggdendro::dendro_data(dend_data)
 ##
 
 # Create clusters by cutting the dendrogram
-clusters <- cutree(hclust_res, k = 4)  # Cut into 4 clusters (adjust as needed)
+clusters <- cutree(hclust_res, k = 5)  # Cut into 4 clusters (adjust as needed)
 
 # Add the clusters to the dendro_data$labels dataframe
 dendro_data$labels$cluster <- clusters[order.dendrogram(dend_data)]  # Match clusters to labels
@@ -139,7 +142,7 @@ dendro_4 <- ggplot() +
                      name = "Cluster", 
                      labels = c("Cluster 1", "Cluster 2", "Cluster 3", "Cluster 4", "Cluster 5", "Cluster 6","Cluster 7"),
                      guide = guide_legend(override.aes = list(size = 4, shape = 16))) +  
-  ylab("Height") +  
+  ylab("") +  
   ggtitle("K = 4") +  # Add plot title
   theme_minimal(base_size = 12) +  
   theme(
@@ -169,7 +172,7 @@ dendro_5 <- ggplot() +
                      name = "Cluster", 
                      labels = c("Cluster 1", "Cluster 2", "Cluster 3", "Cluster 4", "Cluster 5", "Cluster 6","Cluster 7"),
                      guide = guide_legend(override.aes = list(size = 4, shape = 16))) +  
-  ylab("Height") +  
+  ylab("") +  
   ggtitle("K = 5") +  # Add plot title
   theme_minimal(base_size = 12) +  
   theme(

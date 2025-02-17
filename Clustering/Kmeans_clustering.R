@@ -61,6 +61,7 @@ fviz_nbclust(data_scaled_5, kmeans, method = "silhouette")
 # Create the plots
 # Create the plots with increased text size
 plot_wss <- fviz_nbclust(data_scaled_5, kmeans, method = "wss") + 
+  labs(x = "Number of Clusters (K)") + 
   theme(
     plot.title = element_text(size = 18, face = "bold"),
     axis.title = element_text(size = 14),
