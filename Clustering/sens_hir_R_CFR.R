@@ -12,8 +12,8 @@ library(cowplot)
 rm(list = ls())
 
 data <- read_excel("Clustering/cluster_dat.xlsx", 
-                   sheet = "k-proto_ps", col_types = c("text", 
-                                                       "numeric", "numeric","numeric","numeric", "text", "text", 
+                   sheet = "sens_hr", col_types = c("text", 
+                                                       "numeric", "numeric", "text", "text", 
                                                        "text"))
 
 data <- data %>%
@@ -36,6 +36,7 @@ data <- data %>%
     Pathogen == "SARS" ~ "SARS-CoV-1",
     Pathogen == "MERS" ~ "MERS-CoV",
     Pathogen == "CCHF" ~ "CCHFV",
+    Pathogen == "RVF" ~ "RVFV",
     TRUE ~ Pathogen  # Keep other names unchanged
   ))
 
@@ -47,7 +48,7 @@ data$vector <- as.factor(data$vector)
 data$animal <- as.factor(data$animal)
 
 # Calculate Gower distance for mixed data types
-gower_dist <- daisy(data[, c("R0", "Serial", "CFR","pre_sym", "human_human", "vector", "animal")], metric = "gower")
+gower_dist <- daisy(data[, c("R0", "CFR", "human_human", "vector", "animal")], metric = "gower")
 
 # Perform hierarchical clustering
 hclust_res <- hclust(gower_dist, method = "ward.D2")
@@ -57,7 +58,7 @@ plot(hclust_res, labels = data$Pathogen, main = "Dendrogram of Pathogens (Mixed 
 
 #Optimal number of clusters - using elbow method
 plot_wss <- fviz_nbclust(as.matrix(gower_dist), FUN = hcut, method = "wss",
-             hc_method = "complete", k.max = 10) +
+                         hc_method = "complete", k.max = 10) +
   ggtitle("Optimal number of clusters") + 
   labs(x = "Number of Clusters (K)") + 
   theme(
@@ -260,38 +261,4 @@ dendro_plot <- plot_grid(
 dendro_plot
 
 
-ggsave("Clustering/dendro_plot.png", dendro_plot, width = 14, height = 10, dpi = 300, bg = "white")
-
-
-#####################################################################################################
-#Mean cluster values
-# Add the cluster assignments to the original data
-data$cluster <- clusters
-
-# Calculate the mean of each parameter (R0, CFR, etc.) by cluster
-mean_params_by_cluster <- aggregate(. ~ cluster, data = data[, c("R0", "Serial", "CFR","pre_sym", "cluster")], FUN = mean)
-
-# Display the mean parameters for each cluster
-print(mean_params_by_cluster)
-
-summary_params_by_cluster <- data %>%
-  group_by(cluster) %>%
-  summarise(
-    Mean_R0 = mean(R0, na.rm = TRUE),
-    Min_R0 = min(R0, na.rm = TRUE),
-    Max_R0 = max(R0, na.rm = TRUE),
-    Mean_Serial = mean(Serial, na.rm = TRUE),
-    Min_Serial = min(Serial, na.rm = TRUE),
-    Max_Serial = max(Serial, na.rm = TRUE),
-    Mean_CFR = mean(CFR, na.rm = TRUE),
-    Min_CFR = min(CFR, na.rm = TRUE),
-    Max_CFR = max(CFR, na.rm = TRUE),
-    Mean_pre_sym = mean(pre_sym, na.rm = TRUE),
-    Min_pre_sym = min(pre_sym, na.rm = TRUE),
-    Max_pre_sym = max(pre_sym, na.rm = TRUE)
-  )
-
-# Print the summary table
-print(summary_params_by_cluster)
-
-
+ggsave("Clustering/dendro_plot_sens.png", dendro_plot, width = 14, height = 10, dpi = 300, bg = "white")

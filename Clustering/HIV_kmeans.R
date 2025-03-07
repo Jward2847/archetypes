@@ -13,10 +13,9 @@ library(cowplot)
 rm(list = ls())
 
 route_SI <- read_excel("Clustering/cluster_dat.xlsx", 
-                       sheet = "presym", col_types = c("text", 
-                                                         "numeric","numeric", "numeric", "numeric", 
-                                                         "numeric", "numeric", "numeric", "numeric",
-                                                         "numeric"))
+                       sheet = "kmeans_hiv", col_types = c("text", 
+                                                            "numeric","numeric", "numeric", "numeric", 
+                                                            "numeric", "numeric", "numeric"))
 
 route_SI <- route_SI %>%
   mutate(Pathogen = case_when(
@@ -38,6 +37,7 @@ route_SI <- route_SI %>%
     Pathogen == "SARS" ~ "SARS-CoV-1",
     Pathogen == "MERS" ~ "MERS-CoV",
     Pathogen == "CCHF" ~ "CCHFV",
+    Pathogen == "HIV" ~ "HIV",
     TRUE ~ Pathogen  # Keep other names unchanged
   ))
 
@@ -97,9 +97,6 @@ fviz_gap_stat(gap_stat)
 
 
 
-
-
-
 # Apply K-means clustering
 set.seed(123)  # For reproducibility
 km_res_4 <- kmeans(data_scaled_5, centers = 4, nstart = 25) 
@@ -150,7 +147,7 @@ data_with_clusters <- data.frame(Pathogen = route_SI$Pathogen, data_scaled_5, cl
 
 # Visualize the clusters and label them with pathogen names 4 cluster
 
-main_clust <- fviz_cluster(km_res_5, 
+main_clust <- fviz_cluster(km_res_4, 
                            data = data_scaled_5, 
                            geom = "point", 
                            labelsize = 3, 
@@ -161,12 +158,12 @@ main_clust <- fviz_cluster(km_res_5,
                    fontface = "bold", 
                    color = "black", 
                    fill = "white",  # White background for labels
-                   box.padding = 6.5,  #padding around labels
+                   box.padding = 4,  #padding around labels
                    point.padding = 1,  #spacing from points
                    segment.color = "black",  
                    segment.size = 1,  # segment lines
                    segment.alpha = 1,  #transparency for segments
-                   force = 20,  # repulsion for spacing
+                   force = 12,  # repulsion for spacing
                    force_pull = 1,  # attraction to points
                    max.iter = 5000,  #iterations
                    max.overlaps = Inf, 
@@ -204,7 +201,7 @@ top_panel <- plot_grid(
 )
 
 # Arrange the full figure layout
-kmeans_plot <- plot_grid(
+sens_kmeans_plot <- plot_grid(
   top_panel, main_clust, 
   labels = c("", "(c)"), 
   label_size = 18, 
@@ -212,52 +209,7 @@ kmeans_plot <- plot_grid(
   rel_heights = c(1, 1.5) # Give more space to main_clust
 )
 
+sens_kmeans_plot
 
 #Save plot
-ggsave("Clustering/kmeans_fig.png", kmeans_plot, width = 14, height = 10)
-
-
-
-
-########
-#Extract Cluster Centroids
-
-# Extract the cluster centroids from the K-means result
-cluster_centroids <- km_res_5$centers
-
-# View the centroids
-cluster_centroids
-
-
-# Add the cluster assignment to the original data
-route_SI$cluster <- km_res_5$cluster
-
-# Calculate the mean of each feature (R0, CFR, SI) for each cluster
-cluster_summary <- aggregate(. ~ cluster, data = route_SI[, c("R0", "CFR", "Serial", "pre_sym",
-                                                              "Route_resp", "Route_direct", "Route_sexual",
-                                                              "Route_animal", "Route_vector", "cluster")], mean)
-
-# View the cluster summaries
-cluster_summary
-
-# Calculate the mean, min, and max of each feature (R0, CFR, SI, etc.) for each cluster
-cluster_mean <- aggregate(. ~ cluster, data = route_SI[, c("R0", "CFR", "Serial", "pre_sym",
-                                                           "cluster")], mean)
-
-cluster_min <- aggregate(. ~ cluster, data = route_SI[, c("R0", "CFR", "Serial", "pre_sym",
-                                                           "cluster")], min)
-
-cluster_max <- aggregate(. ~ cluster, data = route_SI[, c("R0", "CFR", "Serial", "pre_sym",
-                                                          "cluster")], max)
-
-# Rename columns for clarity
-colnames(cluster_min)[-1] <- paste0(colnames(cluster_min)[-1], "_min")
-colnames(cluster_max)[-1] <- paste0(colnames(cluster_max)[-1], "_max")
-
-# Merge summaries
-cluster_summary <- Reduce(function(x, y) merge(x, y, by = "cluster"), 
-                          list(cluster_mean, cluster_min, cluster_max))
-
-# View the final cluster summary
-print(cluster_summary)
-
+ggsave("Clustering/HIV_fig_kmeans.png", sens_kmeans_plot, width = 14, height = 10)
