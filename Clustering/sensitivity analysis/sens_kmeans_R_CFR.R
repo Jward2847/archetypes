@@ -12,34 +12,35 @@ library(cowplot)
 
 rm(list = ls())
 
-route_SI <- read_excel("Clustering/cluster_dat.xlsx", 
+route_SI <- read_excel("Clustering/data/cluster_dat.xlsx", 
                        sheet = "sens_kmeans", col_types = c("text", 
                                                        "numeric","numeric", "numeric", "numeric", 
                                                        "numeric", "numeric", "numeric"))
 
 route_SI <- route_SI %>%
   mutate(Pathogen = case_when(
-    Pathogen == "COVID-19_WT" ~ "SARS-CoV-2 (WT)",
-    Pathogen == "COVID-19_A" ~ "SARS-CoV-2 (Alpha)",
-    Pathogen == "COVID-19_D" ~ "SARS-CoV-2 (Delta)",
-    Pathogen == "COVID-19_O" ~ "SARS-CoV-2 (Omicron)", 
-    Pathogen == "H1N1_18" ~ "A/H1N1",
-    Pathogen == "H2N2" ~ "A/H2N2",
-    Pathogen == "H3N2" ~ "A/H3N2",
-    Pathogen == "H1N1_09" ~ "A/H1N1/09",
-    Pathogen == "H5N1" ~ "A/H5N1",
-    Pathogen == "Ebola" ~ "EBOV",
-    Pathogen == "Marburg" ~ "MARV",
-    Pathogen == "Mpox" ~ "MPV",
-    Pathogen == "Lassa" ~ "LASV",
-    Pathogen == "Nipah" ~ "NiV",
-    Pathogen == "Zika" ~ "ZIKV",
-    Pathogen == "SARS" ~ "SARS-CoV-1",
-    Pathogen == "MERS" ~ "MERS-CoV",
-    Pathogen == "CCHF" ~ "CCHFV",
-    Pathogen == "RVF" ~ "RVFV",
+    Pathogen == "COVID-19_WT" ~ "1",
+    Pathogen == "COVID-19_A" ~ "2",
+    Pathogen == "COVID-19_D" ~ "3",
+    Pathogen == "COVID-19_O" ~ "4", 
+    Pathogen == "H1N1_18" ~ "5",
+    Pathogen == "H2N2" ~ "6",
+    Pathogen == "H3N2" ~ "7",
+    Pathogen == "H1N1_09" ~ "8",
+    Pathogen == "H5N1" ~ "9",
+    Pathogen == "Ebola" ~ "10",
+    Pathogen == "Marburg" ~ "11",
+    Pathogen == "Mpox" ~ "12",
+    Pathogen == "Lassa" ~ "13",
+    Pathogen == "Nipah" ~ "14",
+    Pathogen == "Zika" ~ "15",
+    Pathogen == "SARS" ~ "16",
+    Pathogen == "MERS" ~ "17",
+    Pathogen == "CCHF" ~ "18",
+    Pathogen == "RVF" ~ "19",
     TRUE ~ Pathogen  # Keep other names unchanged
   ))
+
 
 
 
@@ -153,21 +154,19 @@ main_clust <- fviz_cluster(km_res_5,
                            labelsize = 3, 
                            pointsize = 3, 
                            ellipse.alpha = 0.3) +  
-  geom_label_repel(aes(label = route_SI$Pathogen), 
-                   size = 2.5,  #text size 
-                   fontface = "bold", 
-                   color = "black", 
-                   fill = "white",  # White background for labels
-                   box.padding = 4,  #padding around labels
-                   point.padding = 1,  #spacing from points
-                   segment.color = "black",  
-                   segment.size = 1,  # segment lines
-                   segment.alpha = 1,  #transparency for segments
-                   force = 12,  # repulsion for spacing
-                   force_pull = 1,  # attraction to points
-                   max.iter = 5000,  #iterations
-                   max.overlaps = Inf, 
-                   show.legend = FALSE) +  
+  geom_text_repel(aes(label = route_SI$Pathogen), 
+                  size = 5,  # text size
+                  fontface = "bold", 
+                  color = "black", 
+                  vjust = -0.5,  # Moves labels above points
+                  box.padding = 0.1,  # Less padding to bring labels closer
+                  point.padding = 0.1,  # Closer to points
+                  segment.color = NA,  # Remove segment lines
+                  force = 6,  # Repulsion for spacing
+                  force_pull = 1,  # Attraction to points
+                  max.iter = 5000,  # Iterations
+                  max.overlaps = Inf, 
+                  show.legend = FALSE) +  
   labs(title = "") +
   theme_classic(base_size = 20) +  
   theme(legend.position = "right",  
@@ -178,6 +177,7 @@ main_clust <- fviz_cluster(km_res_5,
         plot.background = element_rect(color = "black", size = 1)) +  
   scale_color_manual(values = c("red", "darkgreen", "orange", "purple", "blue")) +
   scale_fill_manual(values = c("red", "darkgreen", "orange", "purple", "blue"))
+
 
 
 #Create figure
@@ -212,4 +212,4 @@ sens_kmeans_plot <- plot_grid(
 sens_kmeans_plot
 
 #Save plot
-ggsave("Clustering/sens_fig_kmeans.png", sens_kmeans_plot, width = 14, height = 10)
+ggsave("Clustering/figs/sens_fig_kmeans.png", sens_kmeans_plot, width = 14, height = 10)

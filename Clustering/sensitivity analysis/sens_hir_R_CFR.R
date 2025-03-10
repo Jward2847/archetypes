@@ -11,10 +11,10 @@ library(cowplot)
 
 rm(list = ls())
 
-data <- read_excel("Clustering/cluster_dat.xlsx", 
-                   sheet = "hr_hiv", col_types = c("text", 
-                                                    "numeric", "numeric", "text", "text", 
-                                                    "text"))
+data <- read_excel("Clustering/data/cluster_dat.xlsx", 
+                   sheet = "sens_hr", col_types = c("text", 
+                                                       "numeric", "numeric", "text", "text", 
+                                                       "text"))
 
 data <- data %>%
   mutate(Pathogen = case_when(
@@ -36,7 +36,7 @@ data <- data %>%
     Pathogen == "SARS" ~ "SARS-CoV-1",
     Pathogen == "MERS" ~ "MERS-CoV",
     Pathogen == "CCHF" ~ "CCHFV",
-    Pathogen == "HIV" ~ "HIV",
+    Pathogen == "RVF" ~ "RVFV",
     TRUE ~ Pathogen  # Keep other names unchanged
   ))
 
@@ -48,7 +48,7 @@ data$vector <- as.factor(data$vector)
 data$animal <- as.factor(data$animal)
 
 # Calculate Gower distance for mixed data types
-gower_dist <- daisy(data[, c("R0", "pre_sym", "human_human", "vector", "animal")], metric = "gower")
+gower_dist <- daisy(data[, c("R0", "CFR", "human_human", "vector", "animal")], metric = "gower")
 
 # Perform hierarchical clustering
 hclust_res <- hclust(gower_dist, method = "ward.D2")
@@ -88,7 +88,7 @@ dendro_data <- ggdendro::dendro_data(dend_data)
 ##
 
 # Create clusters by cutting the dendrogram
-clusters <- cutree(hclust_res, k = 6)  # Cut into clusters 
+clusters <- cutree(hclust_res, k = 5)  # Cut into clusters 
 
 # Add the clusters to the dendro_data$labels dataframe
 dendro_data$labels$cluster <- clusters[order.dendrogram(dend_data)]  # Match clusters to labels
@@ -103,8 +103,8 @@ dendro_data$labels$label <- data$Pathogen[order.dendrogram(dend_data)]
 ########################################
 #mini plots 
 
-# K= 4 figure
-dendro_4 <- ggplot() +
+# K= 3 figure
+dendro_3 <- ggplot() +
   geom_segment(data = dendro_data$segments, 
                aes(x = x, y = y, xend = xend, yend = yend), 
                linewidth = 1) +  
@@ -116,6 +116,35 @@ dendro_4 <- ggplot() +
                      labels = c("Cluster 1", "Cluster 2", "Cluster 3", "Cluster 4", "Cluster 5", "Cluster 6","Cluster 7"),
                      guide = guide_legend(override.aes = list(size = 4, shape = 16))) +  
   ylab("Height") +  
+  ggtitle("K = 3") +  # Add plot title
+  theme_minimal(base_size = 12) +  
+  theme(
+    axis.title.x = element_blank(),  
+    axis.title.y = element_text(size = 12, face = "bold"),  
+    axis.text.x = element_blank(),   
+    axis.ticks.x = element_blank(),  
+    panel.grid.major = element_blank(),  
+    panel.grid.minor = element_blank(),  
+    legend.position = "right",           
+    legend.title = element_text(size = 10, face = "bold"),  
+    legend.text = element_text(size = 8, face = "bold"),   
+    axis.text.y = element_text(size = 8, face = "bold"),   
+    plot.title = element_text(size = 12, face = "bold", hjust = 0.5)  # Centered and bold
+  )  
+
+#K=4 figure 
+dendro_4 <- ggplot() +
+  geom_segment(data = dendro_data$segments, 
+               aes(x = x, y = y, xend = xend, yend = yend), 
+               linewidth = 1) +  
+  geom_point(data = dendro_data$labels, 
+             aes(x = x, y = y, color = factor(cluster)), 
+             size = 2) +  
+  scale_color_manual(values = c("red", "darkgreen", "orange", "purple", "blue", "darkgrey","#FF69B4"), 
+                     name = "Cluster", 
+                     labels = c("Cluster 1", "Cluster 2", "Cluster 3", "Cluster 4", "Cluster 5", "Cluster 6","Cluster 7"),
+                     guide = guide_legend(override.aes = list(size = 4, shape = 16))) +  
+  ylab("") +  
   ggtitle("K = 4") +  # Add plot title
   theme_minimal(base_size = 12) +  
   theme(
@@ -132,6 +161,7 @@ dendro_4 <- ggplot() +
     plot.title = element_text(size = 12, face = "bold", hjust = 0.5)  # Centered and bold
   )  
 
+
 #K=5 figure 
 dendro_5 <- ggplot() +
   geom_segment(data = dendro_data$segments, 
@@ -146,36 +176,6 @@ dendro_5 <- ggplot() +
                      guide = guide_legend(override.aes = list(size = 4, shape = 16))) +  
   ylab("") +  
   ggtitle("K = 5") +  # Add plot title
-  theme_minimal(base_size = 12) +  
-  theme(
-    axis.title.x = element_blank(),  
-    axis.title.y = element_text(size = 12, face = "bold"),  
-    axis.text.x = element_blank(),   
-    axis.ticks.x = element_blank(),  
-    panel.grid.major = element_blank(),  
-    panel.grid.minor = element_blank(),  
-    legend.position = "right",           
-    legend.title = element_text(size = 10, face = "bold"),  
-    legend.text = element_text(size = 8, face = "bold"),   
-    axis.text.y = element_text(size = 8, face = "bold"),   
-    plot.title = element_text(size = 12, face = "bold", hjust = 0.5)  # Centered and bold
-  )  
-
-
-#K=6 figure 
-dendro_6 <- ggplot() +
-  geom_segment(data = dendro_data$segments, 
-               aes(x = x, y = y, xend = xend, yend = yend), 
-               linewidth = 1) +  
-  geom_point(data = dendro_data$labels, 
-             aes(x = x, y = y, color = factor(cluster)), 
-             size = 2) +  
-  scale_color_manual(values = c("red", "darkgreen", "orange", "purple", "blue", "darkgrey","#FF69B4"), 
-                     name = "Cluster", 
-                     labels = c("Cluster 1", "Cluster 2", "Cluster 3", "Cluster 4", "Cluster 5", "Cluster 6","Cluster 7"),
-                     guide = guide_legend(override.aes = list(size = 4, shape = 16))) +  
-  ylab("") +  
-  ggtitle("K = 6") +  # Add plot title
   theme_minimal(base_size = 12) +  
   theme(
     axis.title.x = element_blank(),  
@@ -235,7 +235,7 @@ dendro_main <- ggplot() +
 # Figure creation
 
 # Combine dendro plots into one panel (a)
-panel_a <- plot_grid(dendro_4, dendro_5, dendro_6, ncol = 3, align = "hv")
+panel_a <- plot_grid(dendro_3, dendro_4, dendro_5, ncol = 3, align = "hv")
 panel_a_boxed <- ggdraw() +
   draw_plot(panel_a) +
   annotate("rect", xmin = 0, xmax = 1, ymin = 0, ymax = 1, 
@@ -261,4 +261,4 @@ dendro_plot <- plot_grid(
 dendro_plot
 
 
-ggsave("Clustering/dendro_plot_HIV.png", dendro_plot, width = 14, height = 10, dpi = 300, bg = "white")
+ggsave("Clustering/figs/dendro_plot_sens.png", dendro_plot, width = 14, height = 10, dpi = 300, bg = "white")

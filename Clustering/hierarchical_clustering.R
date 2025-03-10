@@ -11,8 +11,8 @@ library(cowplot)
 
 rm(list = ls())
 
-data <- read_excel("Clustering/cluster_dat.xlsx", 
-                   sheet = "k-proto_ps", col_types = c("text", 
+data <- read_excel("Clustering/data/cluster_dat.xlsx", 
+                   sheet = "hierarchical", col_types = c("text", 
                                                        "numeric", "numeric","numeric","numeric", "text", "text", 
                                                        "text"))
 
@@ -260,7 +260,7 @@ dendro_plot <- plot_grid(
 dendro_plot
 
 
-ggsave("Clustering/dendro_plot.png", dendro_plot, width = 14, height = 10, dpi = 300, bg = "white")
+ggsave("Clustering/figs/dendro_plot.png", dendro_plot, width = 14, height = 10, dpi = 300, bg = "white")
 
 
 #####################################################################################################
