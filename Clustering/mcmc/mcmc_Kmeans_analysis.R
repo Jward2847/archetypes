@@ -772,11 +772,31 @@ if (exists("combined_assignments_df") && nrow(combined_assignments_df) > 0 &&
   print("--- Starting Ensemble/Consensus Clustering Analysis ---")
   
   if (!requireNamespace("stats", quietly = TRUE)) { install.packages("stats", quiet = TRUE) }
-  if (!requireNamespace("ggplot2", quietly = TRUE)) { install.packages("ggplot2", quiet = TRUE) }
-  if (!requireNamespace("ggdendro", quietly = TRUE)) { install.packages("ggdendro", quiet = TRUE) }
+  if (!requireNamespace("dendextend", quietly = TRUE)) { install.packages("dendextend", quiet = TRUE) }
   library(stats) # For hclust, cutree
-  library(ggplot2)
-  library(ggdendro)
+  library(dendextend) # Added dendextend
+
+  # Define the mapping for full pathogen names
+  pathogen_full_name_map <- c(
+    "COVID-19_WT" = "SARS-CoV-2 (WT)",
+    "COVID-19_A" = "SARS-CoV-2 (Alpha)",
+    "COVID-19_D" = "SARS-CoV-2 (Delta)",
+    "COVID-19_O" = "SARS-CoV-2 (Omicron)", 
+    "H1N1_18" = "A/H1N1",
+    "H2N2" = "A/H2N2",
+    "H3N2" = "A/H3N2",
+    "H1N1_09" = "A/H1N1/09",
+    "H5N1" = "A/H5N1",
+    "Ebola" = "EBOV",
+    "Marburg" = "MARV",
+    "Mpox" = "MPV", # Note: User provided MPV for Mpox
+    "Lassa" = "LASV",
+    "Nipah" = "NiV",
+    "Zika" = "ZIKV",
+    "SARS" = "SARS-CoV-1",
+    "MERS" = "MERS-CoV",
+    "CCHF" = "CCHFV"
+  )
   
   pathogen_names <- sort(unique(combined_assignments_df$Pathogen_Name))
   num_pathogens <- length(pathogen_names)
@@ -842,29 +862,92 @@ if (exists("combined_assignments_df") && nrow(combined_assignments_df) > 0 &&
   print("Performing hierarchical clustering...")
   # Convert to dist object for hclust
   pathogen_dist <- as.dist(dissimilarity_matrix)
-  hierarchical_clust <- hclust(pathogen_dist, method = "average") # Try "average", "complete", or "ward.D2"
+  hierarchical_clust <- hclust(pathogen_dist, method = "average") # Changed back to average
 
-  # --- 9.4. Plot Dendrogram ---
-  print("Plotting dendrogram...")
-  dend_data <- dendro_data(hierarchical_clust, type = "rectangle")
-  dendrogram_plot <- ggplot(segment(dend_data)) +
-    geom_segment(aes(x = x, y = y, xend = xend, yend = yend)) +
-    geom_text(data = label(dend_data), 
-              aes(x = x, y = y, label = label), hjust = 1, angle = 0, size = 3) + # Adjust text properties
-    coord_flip() + # Flip for horizontal dendrogram
-    scale_y_reverse(expand = c(0.2, 0)) + # Reverse y-axis and add some expansion
-    labs(title = "Consensus Clustering Dendrogram (Average Linkage)", 
-         x = "Pathogens", y = "Dissimilarity (1 - Proportion Co-assigned)") +
-    theme_minimal() +
-    theme(axis.text.y = element_text(angle = 0, hjust = 1), # Ensure pathogen names are readable
-          plot.title = element_text(hjust = 0.5))
-  print(dendrogram_plot)
-  ggsave("Clustering/mcmc/Kmeans/consensus_dendrogram.png", plot = dendrogram_plot, width = 10, height = 8)
-  print("Consensus dendrogram saved to Clustering/mcmc/Kmeans/consensus_dendrogram.png")
+  # --- 9.4. Plot Dendrogram (Revised with dendextend) ---
+  print("Plotting enhanced dendrogram with dendextend...")
+  
+  dend <- as.dendrogram(hierarchical_clust)
+  
+  # Apply full names to labels
+  # Ensure all labels in dend are in the map, otherwise they'll become NA
+  original_labels <- labels(dend)
+  new_labels <- pathogen_full_name_map[original_labels]
+  # Handle any names not in the map by keeping their original short name
+  new_labels[is.na(new_labels)] <- original_labels[is.na(new_labels)]
+  labels(dend) <- new_labels
+  
+  # K_CONSENSUS is defined later, but we need it for coloring.
+  # Assuming K_CONSENSUS will be 6 as per user's last choice.
+  # If K_CONSENSUS is determined dynamically later, this part might need adjustment
+  # or we ensure K_CONSENSUS is defined before this plotting block.
+  # For now, let's use the K_CONSENSUS that will be set in section 9.5.
+  # It's currently K_CONSENSUS <- 6 in the script based on last change.
+  
+  dend_colored <- color_branches(dend, k = K_CONSENSUS, col = cluster_colors[1:K_CONSENSUS])
+  dend_colored <- set(dend_colored, "labels_cex", 0.7) # Adjust label size as needed
+  dend_colored <- set(dend_colored, "branches_lwd", 3) # Increased line width for branches
+  
+  # Define a color palette for K_CONSENSUS clusters
+  # Using a predefined palette that is colorblind-friendly and distinct
+  if (!requireNamespace("RColorBrewer", quietly = TRUE)) { install.packages("RColorBrewer", quiet = TRUE) }
+  library(RColorBrewer)
+  
+  cluster_colors <- brewer.pal(n = max(3, K_CONSENSUS), name = "Set2") # Ensure at least 3 colors for palette
+  if (K_CONSENSUS > length(cluster_colors)) { # If K_CONSENSUS is larger than palette size
+      cluster_colors <- rep(cluster_colors, length.out = K_CONSENSUS) # Repeat colors
+  }
+
+  dend_colored <- color_branches(dend, k = K_CONSENSUS, col = cluster_colors[1:K_CONSENSUS])
+
+
+  png_filename <- paste0("Clustering/mcmc/Kmeans/consensus_dendrogram_colored_k", K_CONSENSUS, ".png")
+  png(png_filename, width=1200, height=800, units="px", res=100) # Increased width for readability
+  par(mar = c(5, 4, 4, 10)) # Adjust right margin for labels: c(bottom, left, top, right)
+  plot(dend_colored, horiz = TRUE, 
+       main = paste("Consensus Clustering Dendrogram (K=", K_CONSENSUS, ", Average Linkage)"), 
+       xlab = "Dissimilarity (1 - Proportion Co-assigned)")
+  # Add a legend for cluster colors
+  # This is a bit manual with base plot for dendrograms
+  # Getting cluster assignments for legend
+  cluster_assignments_for_legend <- cutree(hierarchical_clust, k = K_CONSENSUS)[order.dendrogram(dend)]
+  
+  # Add colored text labels for legend (simpler than full legend box for this plot type)
+  # Or, we can draw colored rectangles if we want to be more explicit like fviz_dend
+  
+  # To add colored rectangles (like fviz_dend):
+  # Need to install 'circlize' for rand_color if using it, or define manual colors
+  # groups <- cutree(hierarchical_clust, k = K_CONSENSUS, order_clusters_as_data = FALSE)
+  # rect.dendrogram(dend_colored, k=K_CONSENSUS, border = "grey", lty=2, lwd=1, horiz=TRUE,
+  # col = brewer.pal(K_CONSENSUS, "Set2")[groups[order.dendrogram(dend_colored)]] )
+  # The above rect.dendrogram coloring is complex to get right with horiz=TRUE and branch colors.
+  # The branch colors themselves should be sufficient.
+
+  dev.off()
+  print(paste("Colored consensus dendrogram saved to", png_filename))
+
+  # The old ggdendro plot is now replaced.
+  # print("Plotting dendrogram...")
+  # dend_data <- dendro_data(hierarchical_clust, type = "rectangle")
+  # dendrogram_plot <- ggplot(segment(dend_data)) +
+  #   geom_segment(aes(x = x, y = y, xend = xend, yend = yend)) +
+  #   geom_text(data = label(dend_data), 
+  #             aes(x = x, y = y, label = label), hjust = 1, angle = 0, size = 3) + 
+  #   coord_flip() + 
+  #   scale_y_reverse(expand = c(0.2, 0)) + 
+  #   labs(title = "Consensus Clustering Dendrogram (Average Linkage)", 
+  #        x = "Pathogens", y = "Dissimilarity (1 - Proportion Co-assigned)") +
+  #   theme_minimal() +
+  #   theme(axis.text.y = element_text(angle = 0, hjust = 1), 
+  #         plot.title = element_text(hjust = 0.5))
+  # print(dendrogram_plot)
+  # ggsave("Clustering/mcmc/Kmeans/consensus_dendrogram.png", plot = dendrogram_plot, width = 10, height = 8)
+  # print("Consensus dendrogram saved to Clustering/mcmc/Kmeans/consensus_dendrogram.png")
+
 
   # --- 9.5. Extract Consensus Cluster Assignments ---
   # User should inspect the dendrogram to choose K_consensus
-  K_CONSENSUS <- 4 # Example: Choose 4 clusters. User should adjust this.
+  K_CONSENSUS <- 6 # This is already set to 6 from the previous step
   print(paste("Cutting tree to get", K_CONSENSUS, "consensus clusters..."))
   consensus_clusters <- cutree(hierarchical_clust, k = K_CONSENSUS)
   consensus_assignments_df <- data.frame(Pathogen_Name = names(consensus_clusters),
