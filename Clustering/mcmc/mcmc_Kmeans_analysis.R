@@ -8,8 +8,8 @@ library(readr)
 
 
 # --- 2. Configuration ---
-N_MCMC_ITERATIONS <- 100 # Number of MCMC iterations (Reduced for testing)
-N_PRESYMP_SAMPLES <- 1000 # Number of samples for presymptomatic proportion estimation (Reduced for testing)
+N_MCMC_ITERATIONS <- 5000 # Number of MCMC iterations (Increased for robust run)
+N_PRESYMP_SAMPLES <- 5000 # Number of samples for presymptomatic proportion estimation (Increased for robust run)
 set.seed(123) # For reproducibility
 
 
@@ -490,3 +490,276 @@ print("Script finished.")
 # - Strategy for NAs in Presymp_Proportion_sampled: current script passes them on. Clustering part will need to handle them (e.g. imputation, exclusion, or use of clustering algorithms robust to NAs).
 # - Expand the post-MCMC clustering analysis section (currently only saves samples).
 # - Consider using helper functions from 'epitools' or similar for CI to parameter conversion if appropriate for _Clust_ params.
+
+# --- 8. Clustering Analysis (Revised for per-iteration clustering and K=6) ---
+if (exists("all_mcmc_samples_df") && nrow(all_mcmc_samples_df) > 0) {
+  print("--- Starting Clustering Analysis (Per MCMC Iteration, K=6) ---")
+  
+  CHOSEN_K <- 6 # User specified K=6
+  
+  # --- 8.1. Prepare Data for Clustering (from all_mcmc_samples_df) ---
+  # Select features that will be used. Pathogen_Name and MCMC_Iteration are for tracking.
+  clustering_data_full <- all_mcmc_samples_df %>%
+    select(
+      MCMC_Iteration,
+      Pathogen_Name,
+      R0_sampled, 
+      SI_Clust_sampled, 
+      CFR_sampled, 
+      Presymp_Proportion_sampled,
+      Route_resp,
+      Route_direct,
+      Route_sexual,
+      Route_animal,
+      Route_vector
+    )
+
+  # Handle NAs in the sampled parameters (e.g., if Presymp_Proportion_sampled was NA for some)
+  # Impute with the overall median for that parameter column
+  numerical_param_cols <- c("R0_sampled", "SI_Clust_sampled", "CFR_sampled", "Presymp_Proportion_sampled")
+  for(col in numerical_param_cols){
+    if(any(is.na(clustering_data_full[[col]]))){
+      na_count <- sum(is.na(clustering_data_full[[col]]))
+      warning(paste("Column", col, "in all_mcmc_samples_df has", na_count, "NA values. Imputing with overall median before scaling."))
+      # Ensure the column is numeric before attempting median calculation if it became all NAs somehow
+      if(is.numeric(clustering_data_full[[col]])){
+        clustering_data_full[[col]][is.na(clustering_data_full[[col]])] <- median(clustering_data_full[[col]], na.rm = TRUE)
+      } else {
+        warning(paste("Column", col, "is not numeric or became all NAs, cannot impute with median."))
+      }
+    }
+  }
+  
+  # Scale numerical features across the entire dataset
+  scaled_clustering_data_full <- clustering_data_full
+  # Ensure columns to scale are indeed numeric and exist
+  cols_to_scale_exist <- numerical_param_cols[numerical_param_cols %in% names(scaled_clustering_data_full)]
+  if(length(cols_to_scale_exist) > 0) {
+      scaled_clustering_data_full[cols_to_scale_exist] <- scale(scaled_clustering_data_full[cols_to_scale_exist])
+  } else {
+      warning("No numerical columns found for scaling as specified in numerical_param_cols.")
+  }
+
+  print("Scaled features for per-iteration clustering (first 6 rows of full dataset):")
+  print(head(scaled_clustering_data_full))
+
+  # Lists to store results from each iteration
+  all_iteration_centroids <- list() # Will store UN SCALED centroids
+  all_iteration_assignments <- list()
+
+  mcmc_iterations <- unique(scaled_clustering_data_full$MCMC_Iteration)
+
+  # --- 8.2. K-Means Clustering for Each MCMC Iteration ---
+  if (length(mcmc_iterations) > 0) {
+    for (iter_val in mcmc_iterations) {
+      if (as.integer(iter_val) %% max(1, round(length(mcmc_iterations)/10)) == 0) {
+        print(paste("Clustering MCMC Iteration:", iter_val, "/", length(mcmc_iterations)))
+      }
+      
+      current_iter_data <- scaled_clustering_data_full %>%
+        filter(MCMC_Iteration == iter_val)
+      
+      # Also get the original (unscaled) data for this iteration for calculating unscaled centroids later
+      current_iter_data_unscaled <- clustering_data_full %>%
+        filter(MCMC_Iteration == iter_val)
+
+      current_iter_features_scaled <- current_iter_data %>%
+        select(-MCMC_Iteration, -Pathogen_Name)
+          
+      if (nrow(current_iter_features_scaled) < CHOSEN_K) {
+          warning(paste("Skipping K-means for iteration", iter_val, "due to insufficient data points (", nrow(current_iter_features_scaled), ") for K=", CHOSEN_K))
+          next
+      }
+      if (ncol(current_iter_features_scaled) == 0) {
+          warning(paste("Skipping K-means for iteration", iter_val, "due to no features selected."))
+          next
+      }
+
+      set.seed(123 + as.integer(iter_val)) 
+      kmeans_iter_result <- tryCatch({
+          kmeans(current_iter_features_scaled, centers = CHOSEN_K, nstart = 25)
+      }, error = function(e) {
+          warning(paste("Error in kmeans for iteration", iter_val, ":", e$message, "Skipping this iteration."))
+          NULL
+      })
+      
+      if (!is.null(kmeans_iter_result)) {
+          assignments_df <- data.frame(
+              MCMC_Iteration = iter_val,
+              Pathogen_Name = current_iter_data$Pathogen_Name,
+              Cluster_Assigned = kmeans_iter_result$cluster
+          )
+          all_iteration_assignments[[as.character(iter_val)]] <- assignments_df
+
+          # Calculate centroids from the ORIGINAL UNSCALED data for this iteration
+          # Directly use all_mcmc_samples_df to be certain of unscaled source
+          original_data_this_iter_for_centroids <- all_mcmc_samples_df %>%
+            filter(MCMC_Iteration == iter_val) %>%
+            mutate(Cluster_Assigned_Iter = kmeans_iter_result$cluster) # Add cluster assignments
+          
+          iter_unscaled_centroids <- original_data_this_iter_for_centroids %>%
+            group_by(Cluster_Assigned_Iter) %>%
+            summarise(
+              # Explicitly list the original columns from all_mcmc_samples_df to average
+              R0_sampled = mean(R0_sampled, na.rm = TRUE),
+              SI_Clust_sampled = mean(SI_Clust_sampled, na.rm = TRUE),
+              CFR_sampled = mean(CFR_sampled, na.rm = TRUE),
+              Presymp_Proportion_sampled = mean(Presymp_Proportion_sampled, na.rm = TRUE),
+              Route_resp = mean(Route_resp, na.rm = TRUE),
+              Route_direct = mean(Route_direct, na.rm = TRUE),
+              Route_sexual = mean(Route_sexual, na.rm = TRUE),
+              Route_animal = mean(Route_animal, na.rm = TRUE),
+              Route_vector = mean(Route_vector, na.rm = TRUE),
+              .groups = 'drop'
+            ) %>%
+            rename(Cluster_ID_Iter = Cluster_Assigned_Iter)
+          
+          iter_unscaled_centroids$MCMC_Iteration <- iter_val
+          all_iteration_centroids[[as.character(iter_val)]] <- iter_unscaled_centroids
+      }
+    }
+  } else {
+    print("No MCMC iterations found in the data.")
+  }
+
+  if (length(all_iteration_centroids) > 0 && length(all_iteration_assignments) > 0) {
+      combined_centroids_df <- bind_rows(all_iteration_centroids)
+      combined_assignments_df <- bind_rows(all_iteration_assignments)
+
+      # --- 8.3. Summarize Cluster Centroids (Mean and 95% CI) ---
+      # These centroids are now from UNSCALED data
+      feature_cols_for_centroids <- names(combined_centroids_df)[!names(combined_centroids_df) %in% c("Cluster_ID_Iter", "MCMC_Iteration")]
+      
+      if(length(feature_cols_for_centroids) > 0 && nrow(combined_centroids_df) > 0) {
+          centroid_summary <- combined_centroids_df %>%
+            group_by(Cluster_ID_Iter) %>%
+            summarise(
+              across(all_of(feature_cols_for_centroids), list(
+                mean = ~mean(.x, na.rm = TRUE),
+                lowerCI = ~quantile(.x, 0.025, na.rm = TRUE),
+                upperCI = ~quantile(.x, 0.975, na.rm = TRUE)
+              )),
+              N_iterations_in_summary = n(), # Count how many MCMC iterations contribute to each cluster summary
+              .groups = 'drop'
+            )
+          
+          print("Summary of Cluster Centroids (Mean and 95% CI across MCMC iterations):")
+          print(as.data.frame(centroid_summary))
+          write_csv(centroid_summary, "Clustering/mcmc/Kmeans/cluster_centroids_summary_with_ci_k6.csv")
+          print("Cluster centroids summary saved to Clustering/mcmc/Kmeans/cluster_centroids_summary_with_ci_k6.csv")
+      } else {
+          print("No feature columns or data available for centroid summary.")
+      }
+
+      # --- 8.4. Determine Modal Cluster Assignment for each Pathogen ---
+      if (nrow(combined_assignments_df) > 0) {
+          modal_assignments <- combined_assignments_df %>%
+            group_by(Pathogen_Name, Cluster_Assigned) %>%
+            summarise(count = n(), .groups = 'drop_last') %>%
+            slice_max(order_by = count, n = 1, with_ties = FALSE) %>%
+            ungroup() %>%
+            select(Pathogen_Name, Modal_Cluster = Cluster_Assigned, Modal_Cluster_Count = count)
+            
+          print("Modal cluster assignments for each pathogen:")
+          print(modal_assignments)
+          write_csv(modal_assignments, "Clustering/mcmc/Kmeans/pathogen_modal_cluster_assignments_k6.csv")
+      } else {
+          print("No assignment data available for modal cluster calculation.")
+          modal_assignments <- data.frame(Pathogen_Name = character(), Modal_Cluster = integer(), Modal_Cluster_Count = integer())
+      }
+
+      # --- 8.5. Visualization (using modal assignments and overall data) ---
+      pathogen_summary_for_plot <- all_mcmc_samples_df %>%
+          group_by(Pathogen_Name) %>%
+          summarise(
+              R0_mean_overall = mean(R0_sampled, na.rm = TRUE),
+              SI_Clust_mean_overall = mean(SI_Clust_sampled, na.rm = TRUE),
+              CFR_mean_overall = mean(CFR_sampled, na.rm = TRUE),
+              Presymp_Proportion_mean_overall = mean(Presymp_Proportion_sampled, na.rm = TRUE),
+              Route_resp_mean = mean(Route_resp, na.rm=TRUE), # Mean for binary gives proportion
+              Route_direct_mean = mean(Route_direct, na.rm=TRUE),
+              Route_sexual_mean = mean(Route_sexual, na.rm=TRUE),
+              Route_animal_mean = mean(Route_animal, na.rm=TRUE),
+              Route_vector_mean = mean(Route_vector, na.rm=TRUE),
+              .groups = 'drop'
+          ) %>%
+          left_join(modal_assignments, by = "Pathogen_Name")
+
+      plot_features_numerical <- c("R0_mean_overall", "SI_Clust_mean_overall", "CFR_mean_overall", "Presymp_Proportion_mean_overall")
+      plot_features_routes <- c("Route_resp_mean", "Route_direct_mean", "Route_sexual_mean", "Route_animal_mean", "Route_vector_mean")
+
+      features_for_pca_plot <- pathogen_summary_for_plot %>%
+          select(all_of(plot_features_numerical), all_of(plot_features_routes))
+      
+      # Scale these summarized numerical features for PCA (routes are proportions 0-1, treat as somewhat scaled)
+      scaled_features_for_pca_plot <- features_for_pca_plot
+      scaled_features_for_pca_plot[plot_features_numerical] <- scale(scaled_features_for_pca_plot[plot_features_numerical])
+
+      if (!requireNamespace("ggplot2", quietly = TRUE)) {
+          print("Package 'ggplot2' is not installed.")
+      } else if (!requireNamespace("factoextra", quietly = TRUE)){
+          print("Package 'factoextra' is not installed.")
+      } else if (!requireNamespace("ggrepel", quietly = TRUE)){
+          print("Package 'ggrepel' is not installed. Please install it: install.packages('ggrepel')")
+      } else if (nrow(scaled_features_for_pca_plot) > 1 && !any(is.na(pathogen_summary_for_plot$Modal_Cluster))) {
+          library(ggplot2)
+          library(factoextra)
+          library(ggrepel)
+
+          pca_result_modal <- prcomp(scaled_features_for_pca_plot, center = FALSE, scale. = FALSE) 
+          pca_data_modal <- as.data.frame(pca_result_modal$x)
+          pca_data_modal$Cluster <- factor(pathogen_summary_for_plot$Modal_Cluster, levels = 1:CHOSEN_K) # Ensure all K levels are present for color mapping
+          pca_data_modal$Pathogen_Name <- pathogen_summary_for_plot$Pathogen_Name
+
+          pca_plot_modal <- ggplot(pca_data_modal, aes(x = PC1, y = PC2, color = Cluster, label = Pathogen_Name)) +
+            geom_point(size = 3) +
+            geom_text_repel(size = 3.5, max.overlaps = Inf, fontface = "bold") +
+            labs(title = paste0("Pathogen Clusters (Modal Assignment, K=", CHOSEN_K, ")"),
+                 x = paste0("PC1 (", round(summary(pca_result_modal)$importance[2,1]*100, 1), "%)"),
+                 y = paste0("PC2 (", round(summary(pca_result_modal)$importance[2,2]*100, 1), "%)")) +
+            theme_minimal(base_size = 12) +
+            scale_color_brewer(palette = "Set1", name = "Modal Cluster") # Example palette
+          
+          print(pca_plot_modal)
+          ggsave(paste0("Clustering/mcmc/Kmeans/pca_modal_cluster_plot_k",CHOSEN_K,".png"), plot = pca_plot_modal, width=10, height=8)
+          print(paste0("PCA plot with modal cluster assignments saved to Clustering/mcmc/Kmeans/pca_modal_cluster_plot_k",CHOSEN_K,".png"))
+          
+          # Silhouette plot for an example MCMC iteration
+          if (length(mcmc_iterations) > 0) {
+            example_iter_val <- mcmc_iterations[1]
+            example_iter_data <- scaled_clustering_data_full %>% filter(MCMC_Iteration == example_iter_val)
+            example_iter_features <- example_iter_data %>% select(-MCMC_Iteration, -Pathogen_Name)
+            
+            if (nrow(example_iter_features) >= CHOSEN_K) {
+                set.seed(123 + as.integer(example_iter_val))
+                kmeans_example_iter_result <- tryCatch({
+                    kmeans(example_iter_features, centers = CHOSEN_K, nstart = 25)
+                }, error = function(e) NULL)
+
+                if(!is.null(kmeans_example_iter_result)){
+                    sil_plot_example_iter <- fviz_silhouette(kmeans_example_iter_result, data = example_iter_features, ggtheme = theme_minimal()) +
+                                          labs(title=paste("Silhouette Plot for K=", CHOSEN_K, "(Example MCMC Iteration:", example_iter_val, ")"))
+                    print(sil_plot_example_iter)
+                    ggsave(paste0("Clustering/mcmc/Kmeans/silhouette_plot_k",CHOSEN_K,"_iter",example_iter_val,".png"), plot = sil_plot_example_iter, width=8, height=6)
+                    print(paste0("Silhouette plot for K=", CHOSEN_K, " saved for example iteration ", example_iter_val))
+                } else {
+                     print(paste("Kmeans failed for example iteration ", example_iter_val, ", skipping silhouette plot for it."))
+                }
+            } else {
+                 print(paste("Not enough data points in example iteration ", example_iter_val, " for K=", CHOSEN_K,", skipping silhouette plot."))
+            }
+          } else {
+             print("No MCMC iterations available to generate an example silhouette plot.")
+          }
+      } else {
+          print("Skipping PCA plot due to insufficient data, NA in modal clusters, or missing graphics packages.")
+      }
+  } else {
+      print("No centroids or assignments were generated from per-iteration clustering. Cannot summarize or visualize.")
+  }
+
+} else {
+  print("MCMC samples data frame 'all_mcmc_samples_df' not found or empty. Skipping clustering.")
+}
+
+print("Clustering analysis section (per-iteration) finished.")
