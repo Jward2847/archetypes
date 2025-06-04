@@ -763,3 +763,167 @@ if (exists("all_mcmc_samples_df") && nrow(all_mcmc_samples_df) > 0) {
 }
 
 print("Clustering analysis section (per-iteration) finished.")
+
+
+# --- 9. Ensemble Clustering / Consensus Clustering --- 
+if (exists("combined_assignments_df") && nrow(combined_assignments_df) > 0 && 
+    exists("all_mcmc_samples_df") && nrow(all_mcmc_samples_df) > 0) {
+  
+  print("--- Starting Ensemble/Consensus Clustering Analysis ---")
+  
+  if (!requireNamespace("stats", quietly = TRUE)) { install.packages("stats", quiet = TRUE) }
+  if (!requireNamespace("ggplot2", quietly = TRUE)) { install.packages("ggplot2", quiet = TRUE) }
+  if (!requireNamespace("ggdendro", quietly = TRUE)) { install.packages("ggdendro", quiet = TRUE) }
+  library(stats) # For hclust, cutree
+  library(ggplot2)
+  library(ggdendro)
+  
+  pathogen_names <- sort(unique(combined_assignments_df$Pathogen_Name))
+  num_pathogens <- length(pathogen_names)
+  num_mcmc_iterations <- length(unique(combined_assignments_df$MCMC_Iteration))
+
+  # --- 9.1. Construct Co-assignment Matrix ---
+  print("Constructing co-assignment matrix...")
+  coassignment_matrix <- matrix(0, nrow = num_pathogens, ncol = num_pathogens,
+                                dimnames = list(pathogen_names, pathogen_names))
+
+  # Efficiently get assignments per iteration
+  assignments_by_iter <- split(combined_assignments_df[, c("Pathogen_Name", "Cluster_Assigned")], 
+                               combined_assignments_df$MCMC_Iteration)
+
+  for (iter_idx in 1:length(assignments_by_iter)) {
+    if (iter_idx %% max(1, round(length(assignments_by_iter)/10)) == 0) {
+      print(paste("Processing co-assignments for MCMC iteration", iter_idx, "/", length(assignments_by_iter)))
+    }
+    current_iter_assignments_df <- assignments_by_iter[[iter_idx]]
+    # Ensure pathogen order for consistent indexing if necessary, though direct matching is used here
+    # Pathogens might not all be present in every K-means iteration if K-means failed for some with few data points etc.
+    # However, combined_assignments_df should only contain successful assignments.
+
+    for (i in 1:(num_pathogens - 1)) {
+      for (j in (i + 1):num_pathogens) {
+        pathogen1_name <- pathogen_names[i]
+        pathogen2_name <- pathogen_names[j]
+        
+        p1_assignment_row <- current_iter_assignments_df[current_iter_assignments_df$Pathogen_Name == pathogen1_name, ]
+        p2_assignment_row <- current_iter_assignments_df[current_iter_assignments_df$Pathogen_Name == pathogen2_name, ]
+
+        # Only increment if both pathogens have assignments in this iteration and are in the same cluster
+        if (nrow(p1_assignment_row) > 0 && nrow(p2_assignment_row) > 0) {
+          if (p1_assignment_row$Cluster_Assigned == p2_assignment_row$Cluster_Assigned) {
+            coassignment_matrix[pathogen1_name, pathogen2_name] <- coassignment_matrix[pathogen1_name, pathogen2_name] + 1
+            coassignment_matrix[pathogen2_name, pathogen1_name] <- coassignment_matrix[pathogen1_name, pathogen2_name] # Keep symmetric
+          }
+        }
+      }
+    }
+  }
+  # Diagonal should be total number of iterations a pathogen was part of clustering
+  # For simplicity here, we assume all pathogens are in all iterations in combined_assignments_df.
+  # If not, a pathogen-specific count would be more precise for the diagonal.
+  diag(coassignment_matrix) <- num_mcmc_iterations 
+  
+  print("Co-assignment matrix (first 6x6):")
+  print(head(coassignment_matrix[,1:min(6, ncol(coassignment_matrix))]))
+  write.csv(coassignment_matrix, "Clustering/mcmc/Kmeans/coassignment_matrix.csv")
+
+  # --- 9.2. Calculate Dissimilarity Matrix ---
+  print("Calculating dissimilarity matrix...")
+  # N_MCMC_ITERATIONS is defined at the top of the script
+  dissimilarity_matrix <- 1 - (coassignment_matrix / N_MCMC_ITERATIONS) 
+  # Ensure diagonal is 0 after division, if any NA from 0/0 (though N_MCMC_ITERATIONS is likely >0)
+  diag(dissimilarity_matrix) <- 0 
+
+  print("Dissimilarity matrix (first 6x6):")
+  print(head(dissimilarity_matrix[,1:min(6, ncol(dissimilarity_matrix))]))
+  write.csv(dissimilarity_matrix, "Clustering/mcmc/Kmeans/dissimilarity_matrix.csv")
+
+  # --- 9.3. Perform Hierarchical Clustering ---
+  print("Performing hierarchical clustering...")
+  # Convert to dist object for hclust
+  pathogen_dist <- as.dist(dissimilarity_matrix)
+  hierarchical_clust <- hclust(pathogen_dist, method = "average") # Try "average", "complete", or "ward.D2"
+
+  # --- 9.4. Plot Dendrogram ---
+  print("Plotting dendrogram...")
+  dend_data <- dendro_data(hierarchical_clust, type = "rectangle")
+  dendrogram_plot <- ggplot(segment(dend_data)) +
+    geom_segment(aes(x = x, y = y, xend = xend, yend = yend)) +
+    geom_text(data = label(dend_data), 
+              aes(x = x, y = y, label = label), hjust = 1, angle = 0, size = 3) + # Adjust text properties
+    coord_flip() + # Flip for horizontal dendrogram
+    scale_y_reverse(expand = c(0.2, 0)) + # Reverse y-axis and add some expansion
+    labs(title = "Consensus Clustering Dendrogram (Average Linkage)", 
+         x = "Pathogens", y = "Dissimilarity (1 - Proportion Co-assigned)") +
+    theme_minimal() +
+    theme(axis.text.y = element_text(angle = 0, hjust = 1), # Ensure pathogen names are readable
+          plot.title = element_text(hjust = 0.5))
+  print(dendrogram_plot)
+  ggsave("Clustering/mcmc/Kmeans/consensus_dendrogram.png", plot = dendrogram_plot, width = 10, height = 8)
+  print("Consensus dendrogram saved to Clustering/mcmc/Kmeans/consensus_dendrogram.png")
+
+  # --- 9.5. Extract Consensus Cluster Assignments ---
+  # User should inspect the dendrogram to choose K_consensus
+  K_CONSENSUS <- 4 # Example: Choose 4 clusters. User should adjust this.
+  print(paste("Cutting tree to get", K_CONSENSUS, "consensus clusters..."))
+  consensus_clusters <- cutree(hierarchical_clust, k = K_CONSENSUS)
+  consensus_assignments_df <- data.frame(Pathogen_Name = names(consensus_clusters),
+                                         Consensus_Cluster = consensus_clusters)
+  print("Consensus cluster assignments:")
+  print(consensus_assignments_df)
+  write.csv(consensus_assignments_df, paste0("Clustering/mcmc/Kmeans/consensus_cluster_assignments_k", K_CONSENSUS, ".csv"))
+
+  # --- 9.6. Characterize Consensus Clusters ---
+  print("Characterizing consensus clusters (means and 95% CIs from all_mcmc_samples_df)...")
+  
+  # Select the numerical and route columns to summarize from all_mcmc_samples_df
+  # These are the original sampled values, not the means from previous steps.
+  params_to_summarize <- c("R0_sampled", "SI_Clust_sampled", "CFR_sampled", "Presymp_Proportion_sampled",
+                           "Route_resp", "Route_direct", "Route_sexual", "Route_animal", "Route_vector")
+
+  # Join consensus assignments with the full MCMC samples
+  pathogen_mcmc_samples_with_consensus_clusters <- all_mcmc_samples_df %>% 
+    filter(Pathogen_Name %in% consensus_assignments_df$Pathogen_Name) %>% # Ensure we only use pathogens that got consensus assignment
+    left_join(consensus_assignments_df, by = "Pathogen_Name")
+
+  if(nrow(pathogen_mcmc_samples_with_consensus_clusters) > 0 && "Consensus_Cluster" %in% names(pathogen_mcmc_samples_with_consensus_clusters)){
+    consensus_cluster_summary_list <- list()
+    for (param in params_to_summarize) {
+      if (param %in% names(pathogen_mcmc_samples_with_consensus_clusters)) {
+        summary_for_param <- pathogen_mcmc_samples_with_consensus_clusters %>%
+          group_by(Consensus_Cluster) %>% # Group by the new stable consensus cluster ID
+          summarise(
+            mean_val = mean(get(param), na.rm = TRUE),
+            lower_ci = quantile(get(param), 0.025, na.rm = TRUE),
+            upper_ci = quantile(get(param), 0.975, na.rm = TRUE),
+            median_val = median(get(param), na.rm = TRUE),
+            sd_val = sd(get(param), na.rm=TRUE),
+            n_mcmc_samples_in_calc = sum(!is.na(get(param))), # count non-NA samples for this param in this cluster
+            .groups = 'drop'
+          ) %>% 
+          rename_with(~paste0(param, "_", .), .cols = c(mean_val, lower_ci, upper_ci, median_val, sd_val, n_mcmc_samples_in_calc))
+        consensus_cluster_summary_list[[param]] <- summary_for_param
+      } else {
+        warning(paste("Parameter", param, "not found in pathogen_mcmc_samples_with_consensus_clusters."))
+      }
+    }
+    
+    if(length(consensus_cluster_summary_list) > 0){
+      # Merge all parameter summaries by Consensus_Cluster
+      final_consensus_summary_df <- Reduce(function(x, y) full_join(x, y, by = "Consensus_Cluster"), consensus_cluster_summary_list)
+      print("Summary of Consensus Cluster Characteristics (Mean, 95% CI, Median, SD):")
+      print(as.data.frame(final_consensus_summary_df))
+      write_csv(final_consensus_summary_df, paste0("Clustering/mcmc/Kmeans/consensus_clusters_summary_k", K_CONSENSUS, ".csv"))
+      print(paste0("Consensus clusters summary saved to Clustering/mcmc/Kmeans/consensus_clusters_summary_k", K_CONSENSUS, ".csv"))
+    } else {
+      print("No parameters were summarized for consensus clusters.")
+    }
+  } else {
+    print("Could not prepare data for characterizing consensus clusters (pathogen_mcmc_samples_with_consensus_clusters is empty or missing Consensus_Cluster column).")
+  }
+  
+  print("Ensemble/Consensus Clustering Analysis finished.")
+
+} else {
+  print("Skipping Ensemble/Consensus Clustering: combined_assignments_df or all_mcmc_samples_df not found or empty.")
+}
