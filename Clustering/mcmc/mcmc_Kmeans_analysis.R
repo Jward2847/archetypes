@@ -306,10 +306,6 @@ get_full_dist_params <- function(pathogen_row, type_prefix) {
         mean_val <- raw_params$mean
         sd_val <- raw_params$SD
         if(!is.na(mean_val) && !is.na(sd_val) && mean_val > 0 && sd_val > 0){
-          # mean = exp(meanlog + sdlog^2/2)
-          # sd^2 = (exp(sdlog^2) - 1) * exp(2*meanlog + sdlog^2)
-          # sd^2/mean^2 = exp(sdlog^2) - 1
-          # sdlog^2 = log(sd^2/mean^2 + 1)
           final_params$sdlog <- sqrt(log(sd_val^2 / mean_val^2 + 1))
           final_params$meanlog <- log(mean_val) - 0.5 * final_params$sdlog^2
           final_params$mean <- NULL; final_params$SD <- NULL
@@ -338,69 +334,43 @@ get_full_dist_params <- function(pathogen_row, type_prefix) {
 estimate_presymptomatic_proportion <- function(si_dist_info, ip_dist_info, n_samples = N_PRESYMP_SAMPLES) {
   if (is.null(si_dist_info$family) || is.na(si_dist_info$family) || length(si_dist_info$params) == 0 ||
       is.null(ip_dist_info$family) || is.na(ip_dist_info$family) || length(ip_dist_info$params) == 0) {
-    warning(paste("SI or IP distribution info incomplete. SI Family:", si_dist_info$family, "IP Family:", ip_dist_info$family,
-                  "SI Params:", paste(names(si_dist_info$params), collapse=", "), 
-                  "IP Params:", paste(names(ip_dist_info$params), collapse=", ")))
+    warning(paste("SI or IP distribution info incomplete for", si_dist_info$Pathogen_Name))
     return(NA)
   }
 
-  si_samples <- NULL; ip_samples <- NULL
+  # Helper to create a quantile function from dist_info
+  get_q_func <- function(d_info) {
+    params <- d_info$params
+    switch(d_info$family,
+      "Lognormal" = function(p) qlnorm(p, meanlog = params$meanlog, sdlog = params$sdlog),
+      "Gamma"     = function(p) qgamma(p, shape = params$shape, rate = if (!is.null(params$rate)) params$rate else 1/params$scale),
+      "Normal"    = function(p) qnorm(p, mean = params$mean, sd = params$SD),
+      "Weibull"   = function(p) qweibull(p, shape = params$shape, scale = params$scale),
+      NULL
+    )
+  }
 
-  # Generate samples from SI distribution
-  if(si_dist_info$family == "Lognormal"){
-    if(all(c("meanlog", "sdlog") %in% names(si_dist_info$params)) && si_dist_info$params$sdlog > 0){
-      si_samples <- rlnorm(n_samples, meanlog = si_dist_info$params$meanlog, sdlog = si_dist_info$params$sdlog)
-    } else { warning(paste("Missing/invalid params for SI Lognormal:", si_dist_info$Pathogen_Name, names(si_dist_info$params))); return(NA) }
-  } else if (si_dist_info$family == "Gamma"){
-    if(all(c("shape") %in% names(si_dist_info$params)) && si_dist_info$params$shape > 0 && 
-       (( "rate" %in% names(si_dist_info$params) && si_dist_info$params$rate > 0) || 
-        ( "scale" %in% names(si_dist_info$params) && si_dist_info$params$scale > 0 ))){
-      si_samples <- rgamma(n_samples, shape = si_dist_info$params$shape, 
-                                  rate = if (!is.null(si_dist_info$params$rate)) si_dist_info$params$rate else 1/si_dist_info$params$scale)
-    } else { warning(paste("Missing/invalid params for SI Gamma:", si_dist_info$Pathogen_Name, names(si_dist_info$params))); return(NA) }
-  } else if (si_dist_info$family == "Normal"){
-     if(all(c("mean", "SD") %in% names(si_dist_info$params)) && si_dist_info$params$SD > 0){
-      si_samples <- rnorm(n_samples, mean = si_dist_info$params$mean, sd = si_dist_info$params$SD)
-    } else { warning(paste("Missing/invalid params for SI Normal:", si_dist_info$Pathogen_Name, names(si_dist_info$params))); return(NA) }
-  } else if (si_dist_info$family == "Weibull"){
-    if(all(c("shape", "scale") %in% names(si_dist_info$params)) && si_dist_info$params$shape > 0 && si_dist_info$params$scale > 0){
-      si_samples <- rweibull(n_samples, shape = si_dist_info$params$shape, scale = si_dist_info$params$scale)
-    } else { warning(paste("Missing/invalid params for SI Weibull:", si_dist_info$Pathogen_Name, names(si_dist_info$params))); return(NA) }
-  } else {
-    warning(paste("Unsupported SI distribution family for sampling:", si_dist_info$Pathogen_Name, si_dist_info$family))
+  q_si <- get_q_func(si_dist_info)
+  q_ip <- get_q_func(ip_dist_info)
+
+  if (is.null(q_si) || is.null(q_ip)) {
+    warning(paste("Could not get quantile function for", si_dist_info$Pathogen_Name))
     return(NA)
   }
 
-  # Generate samples from IP distribution
-  if(ip_dist_info$family == "Lognormal"){
-    if(all(c("meanlog", "sdlog") %in% names(ip_dist_info$params)) && ip_dist_info$params$sdlog > 0){
-      ip_samples <- rlnorm(n_samples, meanlog = ip_dist_info$params$meanlog, sdlog = ip_dist_info$params$sdlog)
-    } else { warning(paste("Missing/invalid params for IP Lognormal:", ip_dist_info$Pathogen_Name, names(ip_dist_info$params))); return(NA) }
-  } else if (ip_dist_info$family == "Gamma"){
-    if(all(c("shape") %in% names(ip_dist_info$params)) && ip_dist_info$params$shape > 0 &&
-       (( "rate" %in% names(ip_dist_info$params) && ip_dist_info$params$rate > 0) || 
-        ( "scale" %in% names(ip_dist_info$params) && ip_dist_info$params$scale > 0 ))){
-      ip_samples <- rgamma(n_samples, shape = ip_dist_info$params$shape, 
-                                  rate = if (!is.null(ip_dist_info$params$rate)) ip_dist_info$params$rate else 1/ip_dist_info$params$scale)
-    } else { warning(paste("Missing/invalid params for IP Gamma:", ip_dist_info$Pathogen_Name, names(ip_dist_info$params))); return(NA) }
-  } else if (ip_dist_info$family == "Normal"){
-    if(all(c("mean", "SD") %in% names(ip_dist_info$params)) && ip_dist_info$params$SD > 0){
-      ip_samples <- rnorm(n_samples, mean = ip_dist_info$params$mean, sd = ip_dist_info$params$SD)
-    } else { warning(paste("Missing/invalid params for IP Normal:", ip_dist_info$Pathogen_Name, names(ip_dist_info$params))); return(NA) }
-  } else if (ip_dist_info$family == "Weibull"){
-    if(all(c("shape", "scale") %in% names(ip_dist_info$params)) && ip_dist_info$params$shape > 0 && ip_dist_info$params$scale > 0){
-      ip_samples <- rweibull(n_samples, shape = ip_dist_info$params$shape, scale = ip_dist_info$params$scale)
-    } else { warning(paste("Missing/invalid params for IP Weibull:", ip_dist_info$Pathogen_Name, names(ip_dist_info$params))); return(NA) }
-  } else {
-    warning(paste("Unsupported IP distribution family for sampling:", ip_dist_info$Pathogen_Name, ip_dist_info$family))
-    return(NA)
-  }
+  # --- Correlated Sampling using Quantiles ---
+  # This method assumes a positive rank correlation between SI and IP,
+  # addressing the unrealistic outcomes from the previous independent sampling method.
+  random_quantiles <- runif(n_samples)
   
-  si_samples[si_samples < 0] <- 0
-  ip_samples[ip_samples < 0] <- 0
+  si_samples <- q_si(random_quantiles)
+  ip_samples <- q_ip(random_quantiles)
+  
+  # Truncate any negative samples, which can occur with Normal distributions
+  if(si_dist_info$family == "Normal") si_samples[si_samples < 0] <- 0
+  if(ip_dist_info$family == "Normal") ip_samples[ip_samples < 0] <- 0
 
-  presymp_proportion <- mean(si_samples < ip_samples, na.rm = TRUE)
-  return(presymp_proportion)
+  mean(si_samples < ip_samples, na.rm = TRUE)
 }
 
 
@@ -427,15 +397,14 @@ for (iter in 1:N_MCMC_ITERATIONS) {
     
     presymp_prop_sampled <- NA 
     if (!is.null(si_full_dist_info) && !is.null(ip_full_dist_info) && 
-        !is.null(si_full_dist_info$family) && !is.null(ip_full_dist_info$family) &&
         !is.na(si_full_dist_info$family) && !is.na(ip_full_dist_info$family) &&
         length(si_full_dist_info$params) > 0 && length(ip_full_dist_info$params) > 0) {
-      # Add Pathogen_Name to dist_info for more informative warnings inside estimate_presymptomatic_proportion
-      si_full_dist_info$Pathogen_Name <- pathogen_name 
+      
+      si_full_dist_info$Pathogen_Name <- pathogen_name # Pass name for warnings
       ip_full_dist_info$Pathogen_Name <- pathogen_name
       presymp_prop_sampled <- estimate_presymptomatic_proportion(si_full_dist_info, ip_full_dist_info)
     } else {
-      warning(paste("Could not estimate presymptomatic proportion for", pathogen_name, "due to incomplete SI/IP full dist info from get_full_dist_params."))
+      warning(paste("Could not estimate presymptomatic proportion for", pathogen_name, "due to incomplete SI/IP full dist info."))
     }
     
     pathogen_params_df <- data.frame(
@@ -867,87 +836,43 @@ if (exists("combined_assignments_df") && nrow(combined_assignments_df) > 0 &&
   # --- 9.4. Plot Dendrogram (Revised with dendextend) ---
   print("Plotting enhanced dendrogram with dendextend...")
   
+  # Define the number of consensus clusters (K) and a color palette before plotting.
+  # This value is also used in section 9.5 to cut the tree.
+  K_CONSENSUS <- 6
+  if (!requireNamespace("RColorBrewer", quietly = TRUE)) { install.packages("RColorBrewer", quiet = TRUE) }
+  library(RColorBrewer)
+  
+  cluster_colors <- brewer.pal(n = max(3, K_CONSENSUS), name = "Set2") # Ensure at least 3 colors
+  if (K_CONSENSUS > length(cluster_colors)) { # If K is larger than palette size
+      cluster_colors <- rep(cluster_colors, length.out = K_CONSENSUS) # Repeat colors
+  }
+
   dend <- as.dendrogram(hierarchical_clust)
   
   # Apply full names to labels
-  # Ensure all labels in dend are in the map, otherwise they'll become NA
   original_labels <- labels(dend)
   new_labels <- pathogen_full_name_map[original_labels]
   # Handle any names not in the map by keeping their original short name
   new_labels[is.na(new_labels)] <- original_labels[is.na(new_labels)]
   labels(dend) <- new_labels
   
-  # K_CONSENSUS is defined later, but we need it for coloring.
-  # Assuming K_CONSENSUS will be 6 as per user's last choice.
-  # If K_CONSENSUS is determined dynamically later, this part might need adjustment
-  # or we ensure K_CONSENSUS is defined before this plotting block.
-  # For now, let's use the K_CONSENSUS that will be set in section 9.5.
-  # It's currently K_CONSENSUS <- 6 in the script based on last change.
-  
   dend_colored <- color_branches(dend, k = K_CONSENSUS, col = cluster_colors[1:K_CONSENSUS])
-  dend_colored <- set(dend_colored, "labels_cex", 0.7) # Adjust label size as needed
-  dend_colored <- set(dend_colored, "branches_lwd", 3) # Increased line width for branches
+  dend_colored <- set(dend_colored, "labels_cex", 0.7) # Adjust label size
+  dend_colored <- set(dend_colored, "branches_lwd", 3) # Adjust branch line width
   
-  # Define a color palette for K_CONSENSUS clusters
-  # Using a predefined palette that is colorblind-friendly and distinct
-  if (!requireNamespace("RColorBrewer", quietly = TRUE)) { install.packages("RColorBrewer", quiet = TRUE) }
-  library(RColorBrewer)
-  
-  cluster_colors <- brewer.pal(n = max(3, K_CONSENSUS), name = "Set2") # Ensure at least 3 colors for palette
-  if (K_CONSENSUS > length(cluster_colors)) { # If K_CONSENSUS is larger than palette size
-      cluster_colors <- rep(cluster_colors, length.out = K_CONSENSUS) # Repeat colors
-  }
-
-  dend_colored <- color_branches(dend, k = K_CONSENSUS, col = cluster_colors[1:K_CONSENSUS])
-
-
   png_filename <- paste0("Clustering/mcmc/Kmeans/consensus_dendrogram_colored_k", K_CONSENSUS, ".png")
-  png(png_filename, width=1200, height=800, units="px", res=100) # Increased width for readability
-  par(mar = c(5, 4, 4, 10)) # Adjust right margin for labels: c(bottom, left, top, right)
+  png(png_filename, width=1200, height=800, units="px", res=100)
+  par(mar = c(5, 4, 4, 10)) # Adjust right margin for labels
   plot(dend_colored, horiz = TRUE, 
        main = paste("Consensus Clustering Dendrogram (K=", K_CONSENSUS, ", Average Linkage)"), 
        xlab = "Dissimilarity (1 - Proportion Co-assigned)")
-  # Add a legend for cluster colors
-  # This is a bit manual with base plot for dendrograms
-  # Getting cluster assignments for legend
-  cluster_assignments_for_legend <- cutree(hierarchical_clust, k = K_CONSENSUS)[order.dendrogram(dend)]
-  
-  # Add colored text labels for legend (simpler than full legend box for this plot type)
-  # Or, we can draw colored rectangles if we want to be more explicit like fviz_dend
-  
-  # To add colored rectangles (like fviz_dend):
-  # Need to install 'circlize' for rand_color if using it, or define manual colors
-  # groups <- cutree(hierarchical_clust, k = K_CONSENSUS, order_clusters_as_data = FALSE)
-  # rect.dendrogram(dend_colored, k=K_CONSENSUS, border = "grey", lty=2, lwd=1, horiz=TRUE,
-  # col = brewer.pal(K_CONSENSUS, "Set2")[groups[order.dendrogram(dend_colored)]] )
-  # The above rect.dendrogram coloring is complex to get right with horiz=TRUE and branch colors.
-  # The branch colors themselves should be sufficient.
 
   dev.off()
   print(paste("Colored consensus dendrogram saved to", png_filename))
 
-  # The old ggdendro plot is now replaced.
-  # print("Plotting dendrogram...")
-  # dend_data <- dendro_data(hierarchical_clust, type = "rectangle")
-  # dendrogram_plot <- ggplot(segment(dend_data)) +
-  #   geom_segment(aes(x = x, y = y, xend = xend, yend = yend)) +
-  #   geom_text(data = label(dend_data), 
-  #             aes(x = x, y = y, label = label), hjust = 1, angle = 0, size = 3) + 
-  #   coord_flip() + 
-  #   scale_y_reverse(expand = c(0.2, 0)) + 
-  #   labs(title = "Consensus Clustering Dendrogram (Average Linkage)", 
-  #        x = "Pathogens", y = "Dissimilarity (1 - Proportion Co-assigned)") +
-  #   theme_minimal() +
-  #   theme(axis.text.y = element_text(angle = 0, hjust = 1), 
-  #         plot.title = element_text(hjust = 0.5))
-  # print(dendrogram_plot)
-  # ggsave("Clustering/mcmc/Kmeans/consensus_dendrogram.png", plot = dendrogram_plot, width = 10, height = 8)
-  # print("Consensus dendrogram saved to Clustering/mcmc/Kmeans/consensus_dendrogram.png")
-
-
   # --- 9.5. Extract Consensus Cluster Assignments ---
   # User should inspect the dendrogram to choose K_consensus
-  K_CONSENSUS <- 6 # This is already set to 6 from the previous step
+  # K_CONSENSUS <- 6 # This is now defined in section 9.4 before the dendrogram plot.
   print(paste("Cutting tree to get", K_CONSENSUS, "consensus clusters..."))
   consensus_clusters <- cutree(hierarchical_clust, k = K_CONSENSUS)
   consensus_assignments_df <- data.frame(Pathogen_Name = names(consensus_clusters),
