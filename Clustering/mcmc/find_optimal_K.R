@@ -83,8 +83,8 @@ optimal_k_plot <- ggplot(silhouette_results_df, aes(x = K, y = Average_Silhouett
              aes(x = K, y = Average_Silhouette_Width), color = "red", size = 5, shape = 8) +
   scale_x_continuous(breaks = k_range) +
   labs(
-    title = "Optimal Number of Clusters (K) by Average Silhouette Width",
-    subtitle = "Based on consensus clustering results. The optimal K maximizes the silhouette width.",
+    title = "",
+    subtitle = "",
     x = "Number of Clusters (K)",
     y = "Average Silhouette Width"
   ) +
