@@ -187,6 +187,10 @@ run_full_analysis <- function(data_file_path, clustering_vars, k, output_suffix)
   print(paste("--- Starting Full Analysis for scenario:", output_suffix, "---"))
   print(paste("--- Loading data from:", data_file_path, "---"))
   
+  # Define and create output directory
+  output_dir <- "Clustering/mcmc/Kmeans/MCMC_sens_analysis"
+  dir.create(output_dir, showWarnings = FALSE, recursive = TRUE)
+
   params_df <- read_csv(data_file_path)
 
   # --- MCMC Loop ---
@@ -206,8 +210,10 @@ run_full_analysis <- function(data_file_path, clustering_vars, k, output_suffix)
         si_full_dist_info$Pathogen_Name <- pathogen_name; ip_full_dist_info$Pathogen_Name <- pathogen_name
         presymp_prop_sampled <- estimate_presymptomatic_proportion(si_full_dist_info, ip_full_dist_info)
       } else {
-        # If calculation fails, try to sample it directly as a cluster parameter
-        presymp_prop_sampled <- sample_clust_parameter(pathogen_row, "Presymp")
+        # If calculation fails, check for and try to sample it directly as a cluster parameter
+        if ("Presymp_Clust_UncertaintyType" %in% names(pathogen_row)) {
+            presymp_prop_sampled <- sample_clust_parameter(pathogen_row, "Presymp")
+        }
       }
 
       pathogen_params_df <- data.frame(
@@ -305,7 +311,7 @@ run_full_analysis <- function(data_file_path, clustering_vars, k, output_suffix)
   original_labels <- labels(dend); new_labels <- pathogen_full_name_map[original_labels]; new_labels[is.na(new_labels)] <- original_labels[is.na(new_labels)]; labels(dend) <- new_labels
   dend_colored <- color_branches(dend, k = K_CONSENSUS, col = cluster_colors[1:K_CONSENSUS]) %>% set("labels_cex", 0.7) %>% set("branches_lwd", 3)
   
-  png_filename <- paste0("Clustering/mcmc/Kmeans/consensus_dendrogram_k", K_CONSENSUS, output_suffix, ".png")
+  png_filename <- file.path(output_dir, paste0("consensus_dendrogram_k", K_CONSENSUS, output_suffix, ".png"))
   png(png_filename, width=1200, height=800, units="px", res=100)
   par(mar = c(5, 4, 4, 10)) 
   plot(dend_colored, horiz = TRUE, main = paste("Consensus Dendrogram (K=", K_CONSENSUS, ", Scenario: ", output_suffix, ")"), xlab = "Dissimilarity (1 - Proportion Co-assigned)")
@@ -315,7 +321,7 @@ run_full_analysis <- function(data_file_path, clustering_vars, k, output_suffix)
   # --- Save Results ---
   consensus_clusters <- cutree(hierarchical_clust, k = K_CONSENSUS)
   consensus_assignments_df <- data.frame(Pathogen_Name = names(consensus_clusters), Consensus_Cluster = consensus_clusters)
-  write.csv(consensus_assignments_df, paste0("Clustering/mcmc/Kmeans/consensus_assignments_k", K_CONSENSUS, output_suffix, ".csv"))
+  write.csv(consensus_assignments_df, file.path(output_dir, paste0("consensus_assignments_k", K_CONSENSUS, output_suffix, ".csv")))
   
   print(paste("--- Finished Full Analysis for scenario:", output_suffix, "---"))
   return(TRUE)
