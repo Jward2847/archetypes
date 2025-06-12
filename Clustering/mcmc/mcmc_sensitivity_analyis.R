@@ -22,6 +22,7 @@ library(RColorBrewer)
 library(ggplot2)
 library(factoextra)
 library(ggrepel)
+library(cluster) # For silhouette analysis
 
 # --- 2. Configuration ---
 N_MCMC_ITERATIONS <- 5000 # Number of MCMC iterations
@@ -201,19 +202,25 @@ run_full_analysis <- function(data_file_path, clustering_vars, k, output_suffix)
     current_iteration_params_list <- list()
     for (i in 1:nrow(params_df)) {
       pathogen_row <- params_df[i, ]; pathogen_name <- pathogen_row$Pathogen_Name
-      r0_sampled <- sample_clust_parameter(pathogen_row, "R0"); si_clust_sampled <- sample_clust_parameter(pathogen_row, "SI"); cfr_sampled <- sample_clust_parameter(pathogen_row, "CFR")
+      
+      # Conditionally sample parameters only if they are needed for the current analysis
+      r0_sampled <- if ("R0_sampled" %in% clustering_vars) sample_clust_parameter(pathogen_row, "R0") else NA
+      si_clust_sampled <- if ("SI_Clust_sampled" %in% clustering_vars) sample_clust_parameter(pathogen_row, "SI") else NA
+      cfr_sampled <- if ("CFR_sampled" %in% clustering_vars) sample_clust_parameter(pathogen_row, "CFR") else NA
       
       presymp_prop_sampled <- NA
-      # First, try to calculate from full distributions
-      si_full_dist_info <- get_full_dist_params(pathogen_row, "SI"); ip_full_dist_info <- get_full_dist_params(pathogen_row, "IP")
-      if (all(!sapply(list(si_full_dist_info, ip_full_dist_info), function(x) is.null(x) || is.na(x$family) || length(x$params) == 0))) {
-        si_full_dist_info$Pathogen_Name <- pathogen_name; ip_full_dist_info$Pathogen_Name <- pathogen_name
-        presymp_prop_sampled <- estimate_presymptomatic_proportion(si_full_dist_info, ip_full_dist_info)
-      } else {
-        # If calculation fails, check for and try to sample it directly as a cluster parameter
-        if ("Presymp_Clust_UncertaintyType" %in% names(pathogen_row)) {
-            presymp_prop_sampled <- sample_clust_parameter(pathogen_row, "Presymp")
-        }
+      if ("Presymp_Proportion_sampled" %in% clustering_vars) {
+          # First, try to calculate from full distributions
+          si_full_dist_info <- get_full_dist_params(pathogen_row, "SI"); ip_full_dist_info <- get_full_dist_params(pathogen_row, "IP")
+          if (all(!sapply(list(si_full_dist_info, ip_full_dist_info), function(x) is.null(x) || is.na(x$family) || length(x$params) == 0))) {
+            si_full_dist_info$Pathogen_Name <- pathogen_name; ip_full_dist_info$Pathogen_Name <- pathogen_name
+            presymp_prop_sampled <- estimate_presymptomatic_proportion(si_full_dist_info, ip_full_dist_info)
+          } else {
+            # If calculation fails, check for and try to sample it directly as a cluster parameter
+            if ("Presymp_Clust_UncertaintyType" %in% names(pathogen_row)) {
+                presymp_prop_sampled <- sample_clust_parameter(pathogen_row, "Presymp")
+            }
+          }
       }
 
       pathogen_params_df <- data.frame(
@@ -318,6 +325,52 @@ run_full_analysis <- function(data_file_path, clustering_vars, k, output_suffix)
   dev.off()
   print(paste("Consensus dendrogram saved to", png_filename))
   
+  # --- Silhouette Analysis to Find Optimal K ---
+  print(paste("--- Starting Silhouette Analysis for Optimal K (Scenario: ", output_suffix, ") ---"))
+  k_range <- 2:10 # Range of K to test
+  avg_silhouette_widths <- numeric(length(k_range))
+  names(avg_silhouette_widths) <- k_range
+
+  for (k_val in k_range) {
+    cluster_assignments <- cutree(hierarchical_clust, k = k_val)
+    # The silhouette function can take the original distance matrix directly.
+    silhouette_info <- silhouette(cluster_assignments, dmatrix = dissimilarity_matrix)
+    if (is.null(silhouette_info) || !is.matrix(silhouette_info) || nrow(silhouette_info) == 0) {
+        avg_width <- NA
+    } else {
+        avg_width <- summary(silhouette_info)$avg.width
+    }
+    avg_silhouette_widths[as.character(k_val)] <- avg_width
+  }
+
+  silhouette_results_df <- data.frame(
+    K = k_range,
+    Average_Silhouette_Width = avg_silhouette_widths
+  )
+  print("Silhouette analysis complete. Results:")
+  print(silhouette_results_df)
+
+  optimal_k_plot <- ggplot(silhouette_results_df, aes(x = K, y = Average_Silhouette_Width)) +
+    geom_line(color = "steelblue", size = 1) +
+    geom_point(color = "steelblue", size = 3) +
+    geom_point(data = silhouette_results_df[which.max(silhouette_results_df$Average_Silhouette_Width), ],
+               aes(x = K, y = Average_Silhouette_Width), color = "red", size = 5, shape = 8) +
+    scale_x_continuous(breaks = k_range) +
+    labs(
+      title = paste("Optimal K using Silhouette Method (Scenario: ", output_suffix, ")"),
+      x = "Number of Clusters (K)",
+      y = "Average Silhouette Width"
+    ) +
+    theme_minimal(base_size = 14)
+
+  plot_filename_sil <- file.path(output_dir, paste0("optimal_k_silhouette_plot", output_suffix, ".png"))
+  ggsave(plot_filename_sil, plot = optimal_k_plot, width = 8, height = 6)
+  print(paste("Optimal K silhouette plot saved to", plot_filename_sil))
+
+  results_filename_sil <- file.path(output_dir, paste0("optimal_k_silhouette_results", output_suffix, ".csv"))
+  write_csv(silhouette_results_df, results_filename_sil)
+  print(paste("Optimal K silhouette results saved to", results_filename_sil))
+
   # --- Save Results ---
   consensus_clusters <- cutree(hierarchical_clust, k = K_CONSENSUS)
   consensus_assignments_df <- data.frame(Pathogen_Name = names(consensus_clusters), Consensus_Cluster = consensus_clusters)
@@ -328,13 +381,15 @@ run_full_analysis <- function(data_file_path, clustering_vars, k, output_suffix)
 }
 
 # --- 5. Execute Analyses ---
-CHOSEN_K <- 6 # Assuming K=6 for all sensitivity analyses.
+# Based on the silhouette analysis plots:
+# - The optimal K for the RVFV sensitivity analysis is 6.
+# - The optimal K for the HIV sensitivity analysis is 8.
 
 # --- Analysis 1: Including RVFV (excluding SI and Presymptomatic Proportion) ---
 run_full_analysis(
   data_file_path = "Clustering/mcmc/Kmeans/pathogen_params_RVFV.csv",
   clustering_vars = c("R0_sampled", "CFR_sampled", "Route_resp", "Route_direct", "Route_sexual", "Route_animal", "Route_vector"),
-  k = CHOSEN_K,
+  k = 6, # Optimal K from silhouette analysis
   output_suffix = "_sens_rvfv"
 )
 
@@ -342,7 +397,7 @@ run_full_analysis(
 run_full_analysis(
   data_file_path = "Clustering/mcmc/Kmeans/pathogen_params_HIV.csv",
   clustering_vars = c("R0_sampled", "Presymp_Proportion_sampled", "Route_resp", "Route_direct", "Route_sexual", "Route_animal", "Route_vector"),
-  k = CHOSEN_K,
+  k = 8, # Optimal K from silhouette analysis
   output_suffix = "_sens_hiv"
 )
 

@@ -8,13 +8,12 @@ library(readr)
 
 
 # --- 2. Configuration ---
-N_MCMC_ITERATIONS <- 5000 # Number of MCMC iterations (Increased for robust run)
-N_PRESYMP_SAMPLES <- 5000 # Number of samples for presymptomatic proportion estimation (Increased for robust run)
+N_MCMC_ITERATIONS <- 5000 # Number of MCMC iterations 
+N_PRESYMP_SAMPLES <- 5000 # Number of samples for presymptomatic proportion estimation 
 set.seed(123) # For reproducibility
 
 
 # --- 3. Load Data ---
-# Assuming the script is run from the 'archetypes' directory or the path is relative to it
 params_df <- read_csv("Clustering/mcmc/Kmeans/pathogen_params_kmeans.csv")
 
 # Optional: Quick check of the data
@@ -44,7 +43,6 @@ get_beta_params_from_mean_ci <- function(mean_val, lower_ci, upper_ci, n_eff_gue
 
 # Function to derive parameters for rgamma from mean and 95% CI
 get_gamma_params_from_mean_ci <- function(mean_val, lower_ci, upper_ci) {
-    # This is a simplified approach. A robust version would use optimization.
     min_param_val <- 1e-6 # Small positive value
 
     if (is.na(mean_val) || mean_val <= 0) {
@@ -452,19 +450,13 @@ if (length(mcmc_results) > 0 && !all(sapply(mcmc_results, is.null))){
 
 print("Script finished.")
 
-# TODO:
-# - Refine get_beta_params_from_mean_ci and get_gamma_params_from_mean_ci with robust optimization (e.g., using optim or specific packages).
-# - Further test sampling for uncertain _FullDist_Param_Values, especially for distributions other than rnorm.
-# - Add more specific error handling or fallbacks in sampling functions if parameters are still problematic.
-# - Strategy for NAs in Presymp_Proportion_sampled: current script passes them on. Clustering part will need to handle them (e.g. imputation, exclusion, or use of clustering algorithms robust to NAs).
-# - Expand the post-MCMC clustering analysis section (currently only saves samples).
-# - Consider using helper functions from 'epitools' or similar for CI to parameter conversion if appropriate for _Clust_ params.
 
-# --- 8. Clustering Analysis (Revised for per-iteration clustering and K=6) ---
+
+# --- 8. Clustering Analysis (K=6) ---
 if (exists("all_mcmc_samples_df") && nrow(all_mcmc_samples_df) > 0) {
   print("--- Starting Clustering Analysis (Per MCMC Iteration, K=6) ---")
   
-  CHOSEN_K <- 6 # User specified K=6
+  CHOSEN_K <- 6 #specified K=6
   
   # --- 8.1. Prepare Data for Clustering (from all_mcmc_samples_df) ---
   # Select features that will be used. Pathogen_Name and MCMC_Iteration are for tracking.
@@ -660,7 +652,7 @@ if (exists("all_mcmc_samples_df") && nrow(all_mcmc_samples_df) > 0) {
       features_for_pca_plot <- pathogen_summary_for_plot %>%
           select(all_of(plot_features_numerical), all_of(plot_features_routes))
       
-      # Scale these summarized numerical features for PCA (routes are proportions 0-1, treat as somewhat scaled)
+      # Scale these summarized numerical features for PCA (routes are proportions 0-1)
       scaled_features_for_pca_plot <- features_for_pca_plot
       scaled_features_for_pca_plot[plot_features_numerical] <- scale(scaled_features_for_pca_plot[plot_features_numerical])
 
@@ -758,7 +750,7 @@ if (exists("combined_assignments_df") && nrow(combined_assignments_df) > 0 &&
     "H5N1" = "A/H5N1",
     "Ebola" = "EBOV",
     "Marburg" = "MARV",
-    "Mpox" = "MPV", # Note: User provided MPV for Mpox
+    "Mpox" = "MPV", 
     "Lassa" = "LASV",
     "Nipah" = "NiV",
     "Zika" = "ZIKV",
