@@ -698,11 +698,17 @@ if (exists("all_mcmc_samples_df") && nrow(all_mcmc_samples_df) > 0) {
                 }, error = function(e) NULL)
 
                 if(!is.null(kmeans_example_iter_result)){
-                    sil_plot_example_iter <- fviz_silhouette(kmeans_example_iter_result, data = example_iter_features, ggtheme = theme_minimal()) +
-                                          labs(title=paste("Silhouette Plot for K=", CHOSEN_K, "(Example MCMC Iteration:", example_iter_val, ")"))
-                    print(sil_plot_example_iter)
-                    ggsave(paste0("Clustering/mcmc/Kmeans/silhouette_plot_k",CHOSEN_K,"_iter",example_iter_val,".png"), plot = sil_plot_example_iter, width=8, height=6)
-                    print(paste0("Silhouette plot for K=", CHOSEN_K, " saved for example iteration ", example_iter_val))
+                    if (!requireNamespace("cluster", quietly = TRUE)) {
+                        print("Package 'cluster' is not installed, cannot generate silhouette plot.")
+                    } else {
+                        library(cluster)
+                        sil <- silhouette(kmeans_example_iter_result$cluster, dist(example_iter_features))
+                        sil_plot_example_iter <- fviz_silhouette(sil, ggtheme = theme_minimal()) +
+                                              labs(title=paste("Silhouette Plot for K=", CHOSEN_K, "(Example MCMC Iteration:", example_iter_val, ")"))
+                        print(sil_plot_example_iter)
+                        ggsave(paste0("Clustering/mcmc/Kmeans/silhouette_plot_k",CHOSEN_K,"_iter",example_iter_val,".png"), plot = sil_plot_example_iter, width=8, height=6)
+                        print(paste0("Silhouette plot for K=", CHOSEN_K, " saved for example iteration ", example_iter_val))
+                    }
                 } else {
                      print(paste("Kmeans failed for example iteration ", example_iter_val, ", skipping silhouette plot for it."))
                 }
