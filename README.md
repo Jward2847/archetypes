@@ -1,4 +1,4 @@
-# MCMC K-Means Clustering Analysis for Pathogen Archetypes
+# The epidemiology of pathogens with pandemic potential: A review of key parameters and clustering analysis 
 
 This project implements a Monte Carlo approach combined with K-means clustering to identify distinct pathogen archetypes based on epidemiological parameters. The analysis accounts for parameter uncertainty through probabilistic sampling and provides robust clustering results through ensemble methods.
 
