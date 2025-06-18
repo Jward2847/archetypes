@@ -1,6 +1,6 @@
 # MCMC K-Means Clustering Analysis for Pathogen Archetypes
 
-This project implements a comprehensive Monte Carlo Markov Chain (MCMC) approach combined with K-means clustering to identify distinct pathogen archetypes based on epidemiological parameters. The analysis accounts for parameter uncertainty through probabilistic sampling and provides robust clustering results through ensemble methods.
+This project implements a Monte Carlo approach combined with K-means clustering to identify distinct pathogen archetypes based on epidemiological parameters. The analysis accounts for parameter uncertainty through probabilistic sampling and provides robust clustering results through ensemble methods.
 
 ## Project Overview
 
@@ -9,8 +9,8 @@ The goal is to classify infectious disease pathogens into distinct archetypes ba
 - **Serial Interval (SI)**: Time between symptom onset in successive cases
 - **Case Fatality Rate (CFR)**: Proportion of cases that result in death
 - **Presymptomatic Transmission Proportion**: Fraction of transmission occurring before symptom onset
-- **Transmission Routes**: Respiratory, direct contact, sexual, animal, and vector-borne transmission
-
+- **Transmission Routes**:
+- 
 ## Scripts Overview
 
 ### 1. `mcmc_Kmeans_analysis.R` - Main Analysis Script
@@ -21,7 +21,7 @@ The goal is to classify infectious disease pathogens into distinct archetypes ba
 - **MCMC Sampling**: Generates 5,000 parameter samples per pathogen using uncertainty distributions
 - **Per-iteration Clustering**: Applies K-means clustering to each MCMC iteration
 - **Ensemble/Consensus Clustering**: Combines results across all iterations using hierarchical clustering
-- **Comprehensive Output**: Produces cluster assignments, centroids, and visualizations
+- **Comprehensive Output**: Produces cluster assignments, centroids, and visualisations
 
 **Main Steps**:
 1. **Parameter Sampling**: Samples from uncertainty distributions (normal, beta, gamma, lognormal, uniform)
@@ -29,14 +29,14 @@ The goal is to classify infectious disease pathogens into distinct archetypes ba
 3. **Per-iteration K-means**: Clusters pathogens for each MCMC iteration (K=6)
 4. **Co-assignment Matrix**: Tracks how often pathogens are grouped together
 5. **Consensus Clustering**: Uses hierarchical clustering on dissimilarity matrix
-6. **Visualization**: PCA plots and dendrograms with full pathogen names
+6. **Visualisation**: PCA plots and dendrograms with full pathogen names
 
 **Outputs**:
 - `mcmc_parameter_samples.csv`: All MCMC parameter samples
 - `consensus_cluster_assignments_k6.csv`: Final cluster assignments
 - `cluster_centroids_summary_with_ci_k6.csv`: Cluster characteristics with confidence intervals
 - `consensus_dendrogram_colored_k6.png`: Hierarchical clustering dendrogram
-- `pca_modal_cluster_plot_k6.png`: PCA visualization of clusters
+- `pca_modal_cluster_plot_k6.png`: PCA visualisation of clusters
 
 ### 2. `find_optimal_K.R` - Optimal Cluster Number Analysis
 
@@ -154,18 +154,7 @@ Required R packages:
 - `ggplot2`, `factoextra`, `ggrepel`: Visualization
 - `dendextend`, `RColorBrewer`: Enhanced dendrograms
 
-## Results Summary
 
-The analysis identifies **6 distinct pathogen archetypes** with the following characteristics:
-
-1. **High R0, Low CFR** (e.g., SARS-CoV-2 variants)
-2. **Moderate R0, High CFR** (e.g., Ebola, Marburg)
-3. **Low R0, High CFR** (e.g., Nipah, CCHF)
-4. **High R0, Moderate CFR** (e.g., Influenza variants)
-5. **Vector-borne** (e.g., Zika, RVFV)
-6. **Respiratory-focused** (e.g., SARS-CoV-1, MERS-CoV)
-
-The sensitivity analyses confirm the robustness of these archetypes and reveal how inclusion of different pathogens (RVFV, HIV) affects the optimal number of clusters.
 
 ## File Structure
 
