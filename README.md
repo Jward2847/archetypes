@@ -9,8 +9,8 @@ The goal is to classify infectious disease pathogens into distinct archetypes ba
 - **Serial Interval (SI)**: Time between symptom onset in successive cases
 - **Case Fatality Rate (CFR)**: Proportion of cases that result in death
 - **Presymptomatic Transmission Proportion**: Fraction of transmission occurring before symptom onset
-- **Transmission Routes**:
-- 
+- **Transmission Route**:
+  
 ## Scripts Overview
 
 ### 1. `mcmc_Kmeans_analysis.R` - Main Analysis Script
