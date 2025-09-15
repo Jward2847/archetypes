@@ -94,7 +94,7 @@ The goal is to classify infectious disease pathogens into distinct archetypes ba
 Each pathogen requires:
 - **Clustered Parameters**: R0, SI, CFR with uncertainty information
 - **Full Distribution Parameters**: SI and IP distributions for presymptomatic calculation
-- **Transmission Routes**: Binary indicators for each route type
+- **Transmission Routes**: The categorical transmission route data was encoded using one-hot encoding. Each potential route (e.g., respiratory, direct contact, vector-borne) was represented as a separate binary feature (1 for presence, 0 for absence). These indicators were treated as fixed parameters for each pathogen across all Monte Carlo simulations.
 - **Uncertainty Types**: Point estimates, confidence intervals, or ranges
 - **Sampling Distributions**: Normal, beta, gamma, lognormal, or uniform
 
