@@ -858,7 +858,7 @@ if (exists("combined_assignments_df") && nrow(combined_assignments_df) > 0 &&
   dend_colored <- set(dend_colored, "labels_cex", 0.7) # Adjust label size
   dend_colored <- set(dend_colored, "branches_lwd", 3) # Adjust branch line width
   
-  png_filename <- paste0("Clustering/mcmc/Kmeans/figures/figure.1", ".png")
+  png_filename <- paste0("Clustering/mcmc/Kmeans/figures/figure.2", ".png")
   png(png_filename, width=1200, height=800, units="px", res=100)
   par(mar = c(5, 4, 4, 10)) # Adjust right margin for labels
   plot(dend_colored, horiz = TRUE, 
