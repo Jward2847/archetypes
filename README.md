@@ -1,6 +1,6 @@
 # The epidemiology of pathogens with pandemic potential: A review of key parameters and clustering analysis 
 
-This project implements a Monte Carlo approach combined with K-means clustering to identify distinct pathogen archetypes based on epidemiological parameters. The analysis accounts for parameter uncertainty through probabilistic sampling and provides robust clustering results through ensemble methods.
+This is the R script for the paper "The epidemiology of pathogens with pandemic potential: "A review of key parameters and clustering analysis" currently a preprint hosted at MedRxiv https://www.medrxiv.org/content/10.1101/2025.03.13.25323659v2. This project implements a Monte Carlo approach combined with K-means clustering to identify distinct pathogen archetypes based on epidemiological parameters. The analysis accounts for parameter uncertainty through probabilistic sampling and provides robust clustering results through ensemble methods. 
 
 ## Project Overview
 
@@ -49,9 +49,9 @@ This repository is organized into two main components:
 ## Data Requirements
 
 ### Input Files
-- `pathogen_params_kmeans.csv`: Main parameter file with 19 pathogens
-- `pathogen_params_RVFV.csv`: Extended dataset including RVFV
-- `pathogen_params_HIV.csv`: Extended dataset including HIV
+- `pathogen_params_kmeans.csv`: Main parameter file used for the primary clustering analysis.
+- `pathogen_params_V2_extended.csv`: Contains additional parameters for the sensitivity analysis scripts.
+- `pathogen_params_sens.csv`: Includes additional pathogens for sensitivity analysis.
 
 ### Parameter Structure
 Each pathogen requires:
@@ -71,7 +71,7 @@ Each pathogen requires:
 ### Clustering Approach
 - **Ensemble Method**: Combines results across 5,000 MCMC iterations
 - **Consensus Clustering**: Uses hierarchical clustering on co-assignment frequencies
-- **Scaled Features**: Normalizes numerical parameters for clustering
+- **Scaled Features**: Normalises numerical parameters for clustering
 - **Modal Assignments**: Determines most frequent cluster for each pathogen
 
 ### Validation Methods
@@ -136,4 +136,4 @@ Required R packages:
     └── old_presym/               # Legacy presymptomatic estimation scripts
 ```
 
-This project provides a robust, uncertainty-aware approach to pathogen classification that can inform public health decision-making and outbreak response strategies.
+
