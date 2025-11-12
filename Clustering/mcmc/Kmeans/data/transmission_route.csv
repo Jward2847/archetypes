@@ -1,0 +1,31 @@
+Pathogen_Name,TR_citation,Route_resp,Route_direct,Route_sexual,Route_animal,Route_vector,Route_food_water,Notes
+COVID-19_WT,Cascella et al. 2023,1,0,0,0,0,0,https://www.ncbi.nlm.nih.gov/books/NBK554776/
+COVID-19_A,Cascella et al. 2023,1,0,0,0,0,0,
+COVID-19_D,Cascella et al. 2023,1,0,0,0,0,0,
+COVID-19_O,Cascella et al. 2023,1,0,0,0,0,0,
+Ebola,CDC webpage,0,1,0,1,0,0,"https://www.cdc.gov/ebola/about/index.html#:~:text=What%20it%20is,primarily%20in%20sub%2DSaharan%20Africa."
+Marburg,CDC webpage,0,1,0,1,0,0,https://www.cdc.gov/marburg/about/index.html
+Lassa,CDC webpage,0,1,0,1,0,0,https://www.cdc.gov/lassa-fever/about/index.html
+CCHF,CDC webpage,0,1,0,1,1,0,https://www.cdc.gov/crimean-congo-hemorrhagic/about/index.html
+Nipah,CDC webpage,0,1,0,1,0,0,https://www.cdc.gov/nipah-virus/about/index.html
+Zika,CDC webpage,0,0,1,0,1,0,https://www.cdc.gov/zika/causes/index.html
+Mpox,WHO webpage,0,1,0,1,0,0,"https://www.who.int/news-room/fact-sheets/detail/mpox#:~:text=Mpox%20can%20be%20transmitted%20through,newborn%20during%20or%20after%20birth."
+H1N1_18,CDC webpage,1,0,0,0,0,0,https://www.cdc.gov/flu/about/disease/spread.htm
+H2N2,CDC webpage,1,0,0,0,0,0,
+H3N2,CDC webpage,1,0,0,0,0,0,
+H1N1_09,CDC webpage,1,0,0,0,0,0,
+H5N1,Charostad et al. 2023,1,0,0,1,0,0,https://www.sciencedirect.com/science/article/pii/S1477893923000984#sec5
+SARS,Wit et al. 2016,1,0,0,0,0,0,https://www.nature.com/articles/nrmicro.2016.81#Sec3
+MERS,Wit et al. 2016,1,0,0,1,0,0,https://www.nature.com/articles/nrmicro.2016.81#Sec3
+HIV,Shaw and  Hunter 2012,0,1,1,0,0,0,https://pmc.ncbi.nlm.nih.gov/articles/PMC3543106/
+Cholera,CDC webpage,0,1,0,0,0,1,https://www.cdc.gov/cholera/causes/index.html
+Measles,CDC webpage,1,0,0,0,0,0,https://www.cdc.gov/measles/causes/index.html
+Norovirus,CDC webpage,0,1,0,0,0,1,https://www.cdc.gov/norovirus/causes/index.html
+SFTS,UK gov webpage,0,1,0,0,1,0,https://www.gov.uk/guidance/severe-fever-with-thrombocytopaenia-syndrome-sfts-epidemiology-outbreaks-and-guidance#transmission
+EVA71,CDC webpage,1,1,0,0,0,1,https://www.cdc.gov/non-polio-enterovirus/about/about-enterovirus-a-71.html
+hMPV,CDC webpage,1,1,0,0,0,0,https://www.cdc.gov/human-metapneumovirus/about/index.html
+Plague,CDC webpage,1,0,0,1,1,0,https://www.cdc.gov/plague/causes/index.html
+Smallpox,CDC webpage,1,1,0,0,0,0,https://www.cdc.gov/smallpox/causes/index.html
+Chikungunya,CDC webpage,0,0,0,0,1,0,https://www.cdc.gov/chikungunya/php/transmission/index.html
+RVFV,WHO webpage,0,0,0,0,1,0,https://www.who.int/news-room/fact-sheets/detail/rift-valley-fever
+Anthrax,CDC webpage,1,1,0,1,0,1,https://www.cdc.gov/anthrax/about/index.html
