@@ -890,102 +890,103 @@ if (exists("combined_assignments_df") && nrow(combined_assignments_df) > 0 &&
   pathogen_dist <- as.dist(dissimilarity_matrix)
   hierarchical_clust <- hclust(pathogen_dist, method = "average") # Changed back to average
 
-  # --- 9.4. Plot Dendrogram (Revised with dendextend) ---
-  print("Plotting enhanced dendrogram with dendextend...")
-  
-  # Define the number of consensus clusters (K) and a color palette before plotting.
-  # This value is also used in section 9.5 to cut the tree.
-  K_CONSENSUS <- 6
-  if (!requireNamespace("RColorBrewer", quietly = TRUE)) { install.packages("RColorBrewer", quiet = TRUE) }
-  library(RColorBrewer)
-  
-  cluster_colors <- brewer.pal(n = max(3, K_CONSENSUS), name = "Set2") # Ensure at least 3 colors
-  if (K_CONSENSUS > length(cluster_colors)) { # If K is larger than palette size
-      cluster_colors <- rep(cluster_colors, length.out = K_CONSENSUS) # Repeat colors
-  }
+  # --- 9.4. Loop through K values to generate outputs for each ---
+  for (K_CONSENSUS in 4:8) {
+    print(paste("--- Generating outputs for K =", K_CONSENSUS, "---"))
 
-  dend <- as.dendrogram(hierarchical_clust)
+    # --- Plot Dendrogram (Revised with dendextend) ---
+    print("Plotting enhanced dendrogram...")
+    if (!requireNamespace("RColorBrewer", quietly = TRUE)) { install.packages("RColorBrewer", quiet = TRUE) }
+    library(RColorBrewer)
+    
+    cluster_colors <- brewer.pal(n = max(3, K_CONSENSUS), name = "Set2") # Ensure at least 3 colors
+    if (K_CONSENSUS > length(cluster_colors)) { # If K is larger than palette size
+        cluster_colors <- rep(cluster_colors, length.out = K_CONSENSUS) # Repeat colors
+    }
   
-  # Apply full names to labels
-  original_labels <- labels(dend)
-  new_labels <- pathogen_full_name_map[original_labels]
-  # Handle any names not in the map by keeping their original short name
-  new_labels[is.na(new_labels)] <- original_labels[is.na(new_labels)]
-  labels(dend) <- new_labels
+    dend <- as.dendrogram(hierarchical_clust)
+    
+    # Apply full names to labels
+    original_labels <- labels(dend)
+    new_labels <- pathogen_full_name_map[original_labels]
+    # Handle any names not in the map by keeping their original short name
+    new_labels[is.na(new_labels)] <- original_labels[is.na(new_labels)]
+    labels(dend) <- new_labels
+    
+    dend_colored <- color_branches(dend, k = K_CONSENSUS, col = cluster_colors[1:K_CONSENSUS])
+    dend_colored <- set(dend_colored, "labels_cex", 0.7) # Adjust label size
+    dend_colored <- set(dend_colored, "branches_lwd", 3) # Adjust branch line width
+    
+    png_filename <- paste0("Clustering/mcmc/Kmeans/figures/figure.S6_k", K_CONSENSUS, ".png")
+    png(png_filename, width=1200, height=800, units="px", res=100)
+    par(mar = c(5, 4, 4, 10)) # Adjust right margin for labels
+    plot(dend_colored, horiz = TRUE, 
+         main = paste("Consensus Clustering (K=", K_CONSENSUS, ")"), 
+         xlab = "Dissimilarity (1 - Proportion Co-assigned)")
   
-  dend_colored <- color_branches(dend, k = K_CONSENSUS, col = cluster_colors[1:K_CONSENSUS])
-  dend_colored <- set(dend_colored, "labels_cex", 0.7) # Adjust label size
-  dend_colored <- set(dend_colored, "branches_lwd", 3) # Adjust branch line width
+    dev.off()
+    print(paste("Colored consensus dendrogram saved to", png_filename))
   
-  png_filename <- paste0("Clustering/mcmc/Kmeans/figures/figure.S6", ".png")
-  png(png_filename, width=1200, height=800, units="px", res=100)
-  par(mar = c(5, 4, 4, 10)) # Adjust right margin for labels
-  plot(dend_colored, horiz = TRUE, 
-       main = paste(""), 
-       xlab = "Dissimilarity (1 - Proportion Co-assigned)")
-
-  dev.off()
-  print(paste("Colored consensus dendrogram saved to", png_filename))
-
-  # --- 9.5. Extract Consensus Cluster Assignments ---
-  # User should inspect the dendrogram to choose K_consensus
-  # K_CONSENSUS <- 6 # This is now defined in section 9.4 before the dendrogram plot.
-  print(paste("Cutting tree to get", K_CONSENSUS, "consensus clusters..."))
-  consensus_clusters <- cutree(hierarchical_clust, k = K_CONSENSUS)
-  consensus_assignments_df <- data.frame(Pathogen_Name = names(consensus_clusters),
-                                         Consensus_Cluster = consensus_clusters)
-  print("Consensus cluster assignments:")
-  print(consensus_assignments_df)
-  write.csv(consensus_assignments_df, paste0("Clustering/mcmc/Kmeans/S6_outputs/consensus_cluster_assignments_k", K_CONSENSUS, ".csv"))
-
-  # --- 9.6. Characterize Consensus Clusters ---
-  print("Characterizing consensus clusters (means and 95% CIs from all_mcmc_samples_df)...")
+    # --- 9.5. Extract Consensus Cluster Assignments ---
+    print(paste("Cutting tree to get", K_CONSENSUS, "consensus clusters..."))
+    consensus_clusters <- cutree(hierarchical_clust, k = K_CONSENSUS)
+    consensus_assignments_df <- data.frame(Pathogen_Name = names(consensus_clusters),
+                                           Consensus_Cluster = consensus_clusters)
+    print("Consensus cluster assignments:")
+    print(consensus_assignments_df)
+    write.csv(consensus_assignments_df, paste0("Clustering/mcmc/Kmeans/S6_outputs/consensus_cluster_assignments_k", K_CONSENSUS, ".csv"))
   
-  # Select the numerical and route columns to summarize from all_mcmc_samples_df
-  # These are the original sampled values, not the means from previous steps.
-  params_to_summarize <- c("R0_sampled", "SI_Clust_sampled", "CFR_sampled", "Presymp_Proportion_sampled",
-                           "k_sampled", "LatentPeriod_sampled", "InfectiousPeriod_sampled", "IncubationPeriod_sampled",
-                           "Route_resp", "Route_direct", "Route_sexual", "Route_animal", "Route_vector")
-
-  # Join consensus assignments with the full MCMC samples
-  pathogen_mcmc_samples_with_consensus_clusters <- all_mcmc_samples_df %>% 
-    filter(Pathogen_Name %in% consensus_assignments_df$Pathogen_Name) %>% # Ensure we only use pathogens that got consensus assignment
-    left_join(consensus_assignments_df, by = "Pathogen_Name")
-
-  if(nrow(pathogen_mcmc_samples_with_consensus_clusters) > 0 && "Consensus_Cluster" %in% names(pathogen_mcmc_samples_with_consensus_clusters)){
-    consensus_cluster_summary_list <- list()
-    for (param in params_to_summarize) {
-      if (param %in% names(pathogen_mcmc_samples_with_consensus_clusters)) {
-        summary_for_param <- pathogen_mcmc_samples_with_consensus_clusters %>%
-          group_by(Consensus_Cluster) %>% # Group by the new stable consensus cluster ID
-          summarise(
-            mean_val = mean(get(param), na.rm = TRUE),
-            lower_ci = quantile(get(param), 0.025, na.rm = TRUE),
-            upper_ci = quantile(get(param), 0.975, na.rm = TRUE),
-            median_val = median(get(param), na.rm = TRUE),
-            sd_val = sd(get(param), na.rm=TRUE),
-            n_mcmc_samples_in_calc = sum(!is.na(get(param))), # count non-NA samples for this param in this cluster
-            .groups = 'drop'
-          ) %>% 
-          rename_with(~paste0(param, "_", .), .cols = c(mean_val, lower_ci, upper_ci, median_val, sd_val, n_mcmc_samples_in_calc))
-        consensus_cluster_summary_list[[param]] <- summary_for_param
-      } else {
-        warning(paste("Parameter", param, "not found in pathogen_mcmc_samples_with_consensus_clusters."))
+    # --- 9.6. Characterize Consensus Clusters ---
+    print("Characterizing consensus clusters (means and 95% CIs from all_mcmc_samples_df)...")
+    
+    # Select the numerical and route columns to summarize from all_mcmc_samples_df
+    # These are the original sampled values, not the means from previous steps.
+    params_to_summarize <- c("R0_sampled", "SI_Clust_sampled", "CFR_sampled", "Presymp_Proportion_sampled",
+                             "k_sampled", "LatentPeriod_sampled", "InfectiousPeriod_sampled", "IncubationPeriod_sampled",
+                             "Route_resp", "Route_direct", "Route_sexual", "Route_animal", "Route_vector")
+  
+    # Join consensus assignments with the full MCMC samples
+    pathogen_mcmc_samples_with_consensus_clusters <- all_mcmc_samples_df %>% 
+      filter(Pathogen_Name %in% consensus_assignments_df$Pathogen_Name) %>% # Ensure we only use pathogens that got consensus assignment
+      left_join(consensus_assignments_df, by = "Pathogen_Name")
+  
+    if(nrow(pathogen_mcmc_samples_with_consensus_clusters) > 0 && "Consensus_Cluster" %in% names(pathogen_mcmc_samples_with_consensus_clusters)){
+      consensus_cluster_summary_list <- list()
+      for (param in params_to_summarize) {
+        if (param %in% names(pathogen_mcmc_samples_with_consensus_clusters)) {
+          summary_for_param <- pathogen_mcmc_samples_with_consensus_clusters %>%
+            group_by(Consensus_Cluster) %>% # Group by the new stable consensus cluster ID
+            summarise(
+              mean_val = mean(get(param), na.rm = TRUE),
+              lower_ci = quantile(get(param), 0.025, na.rm = TRUE),
+              upper_ci = quantile(get(param), 0.975, na.rm = TRUE),
+              median_val = median(get(param), na.rm = TRUE),
+              sd_val = sd(get(param), na.rm=TRUE),
+              n_mcmc_samples_in_calc = sum(!is.na(get(param))), # count non-NA samples for this param in this cluster
+              .groups = 'drop'
+            ) %>% 
+            rename_with(~paste0(param, "_", .), .cols = c(mean_val, lower_ci, upper_ci, median_val, sd_val, n_mcmc_samples_in_calc))
+          consensus_cluster_summary_list[[param]] <- summary_for_param
+        } else {
+          warning(paste("Parameter", param, "not found in pathogen_mcmc_samples_with_consensus_clusters."))
+        }
       }
+      
+      if(length(consensus_cluster_summary_list) > 0){
+        # Merge all parameter summaries by Consensus_Cluster
+        final_consensus_summary_df <- Reduce(function(x, y) full_join(x, y, by = "Consensus_Cluster"), consensus_cluster_summary_list)
+        print("Summary of Consensus Cluster Characteristics (Mean, 95% CI, Median, SD):")
+        print(as.data.frame(final_consensus_summary_df))
+        write_csv(final_consensus_summary_df, paste0("Clustering/mcmc/Kmeans/S6_outputs/consensus_clusters_summary_k", K_CONSENSUS, ".csv"))
+        print(paste0("Consensus clusters summary saved to Clustering/mcmc/Kmeans/S6_outputs/consensus_clusters_summary_k", K_CONSENSUS, ".csv"))
+      } else {
+        print("No parameters were summarized for consensus clusters.")
+      }
+    } else {
+      print("Could not prepare data for characterizing consensus clusters (pathogen_mcmc_samples_with_consensus_clusters is empty or missing Consensus_Cluster column).")
     }
     
-    if(length(consensus_cluster_summary_list) > 0){
-      # Merge all parameter summaries by Consensus_Cluster
-      final_consensus_summary_df <- Reduce(function(x, y) full_join(x, y, by = "Consensus_Cluster"), consensus_cluster_summary_list)
-      print("Summary of Consensus Cluster Characteristics (Mean, 95% CI, Median, SD):")
-      print(as.data.frame(final_consensus_summary_df))
-      write_csv(final_consensus_summary_df, paste0("Clustering/mcmc/Kmeans/S6_outputs/consensus_clusters_summary_k", K_CONSENSUS, ".csv"))
-      print(paste0("Consensus clusters summary saved to Clustering/mcmc/Kmeans/S6_outputs/consensus_clusters_summary_k", K_CONSENSUS, ".csv"))
-    } else {
-      print("No parameters were summarized for consensus clusters.")
-    }
-  } else {
-    print("Could not prepare data for characterizing consensus clusters (pathogen_mcmc_samples_with_consensus_clusters is empty or missing Consensus_Cluster column).")
+    print(paste("--- Finished K =", K_CONSENSUS, "---"))
   }
   
   print("Ensemble/Consensus Clustering Analysis finished.")

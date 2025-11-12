@@ -16,9 +16,9 @@ print("--- Starting Optimal K Analysis (Silhouette Method) ---")
 
 # --- 2. Load the Dissimilarity Matrix ---
 # This matrix is the output from the consensus clustering step in the main analysis script.
-dissimilarity_matrix_file <- "Clustering/mcmc/Kmeans/main_outputs/dissimilarity_matrix.csv"
+dissimilarity_matrix_file <- "Clustering/mcmc/Kmeans/main_outputs/dissimilarity_matrix_uniform.csv"
 if (!file.exists(dissimilarity_matrix_file)) {
-  stop(paste("Error: Dissimilarity matrix file not found at", dissimilarity_matrix_file, ". Please run the main mcmc_Kmeans_analysis.R script first."))
+  stop(paste("Error: Dissimilarity matrix file not found at", dissimilarity_matrix_file, ". Please run the main_analysis_uniform_sampling.R script first."))
 }
 
 dissim_df <- read_csv(dissimilarity_matrix_file, col_types = cols(.default = "d", ...1 = "c"))
@@ -94,11 +94,11 @@ optimal_k_plot <- ggplot(silhouette_results_df, aes(x = K, y = Average_Silhouett
 print(optimal_k_plot)
 
 # --- 6. Save the Plot and Results ---
-plot_filename <- "Clustering/mcmc/Kmeans/figures/figure.S5.png"
+plot_filename <- "Clustering/mcmc/Kmeans/figures/figure.S5_uniform.png"
 ggsave(plot_filename, plot = optimal_k_plot, width = 8, height = 6)
 print(paste("Optimal K plot saved to", plot_filename))
 
-results_filename <- "Clustering/mcmc/Kmeans/main_outputs/optimal_k_silhouette_results.csv"
+results_filename <- "Clustering/mcmc/Kmeans/main_outputs/optimal_k_silhouette_results_uniform.csv"
 write_csv(silhouette_results_df, results_filename)
 print(paste("Optimal K analysis results saved to", results_filename))
 
