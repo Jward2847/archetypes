@@ -10,21 +10,24 @@ if (!requireNamespace("ggplot2", quietly = TRUE)) {
 }
 library(cluster)
 library(ggplot2)
-library(readr)
 
 print("--- Starting Optimal K Analysis (Silhouette Method) ---")
 
-# --- 2. Load the Dissimilarity Matrix ---
+# --- 2. Configuration & Load Data ---
+# Define base directories for inputs and outputs
+# This makes it easier to adapt for sensitivity analyses (e.g., S6_outputs)
+main_output_dir <- "Clustering/mcmc/Kmeans/main_outputs"
+figures_dir <- "Clustering/mcmc/Kmeans/figures"
+
 # This matrix is the output from the consensus clustering step in the main analysis script.
-dissimilarity_matrix_file <- "Clustering/mcmc/Kmeans/main_outputs/dissimilarity_matrix.csv"
+dissimilarity_matrix_file <- file.path(main_output_dir, "dissimilarity_matrix.csv")
 if (!file.exists(dissimilarity_matrix_file)) {
   stop(paste("Error: Dissimilarity matrix file not found at", dissimilarity_matrix_file, ". Please run the main mcmc_Kmeans_analysis.R script first."))
 }
 
-dissim_df <- read_csv(dissimilarity_matrix_file, col_types = cols(.default = "d", ...1 = "c"))
-pathogen_names <- dissim_df$...1
-dissim_mat <- as.matrix(dissim_df[,-1])
-rownames(dissim_mat) <- pathogen_names
+# Load the dissimilarity matrix.
+# Using read.csv with row.names = 1 is robust for files created with write.csv.
+dissim_mat <- as.matrix(read.csv(dissimilarity_matrix_file, row.names = 1))
 
 # Convert to a 'dist' object for analysis
 pathogen_dist <- as.dist(dissim_mat)
@@ -94,12 +97,12 @@ optimal_k_plot <- ggplot(silhouette_results_df, aes(x = K, y = Average_Silhouett
 print(optimal_k_plot)
 
 # --- 6. Save the Plot and Results ---
-plot_filename <- "Clustering/mcmc/Kmeans/figures/figure.S5.png"
+plot_filename <- file.path(figures_dir, "figure.S5.png")
 ggsave(plot_filename, plot = optimal_k_plot, width = 8, height = 6)
 print(paste("Optimal K plot saved to", plot_filename))
 
-results_filename <- "Clustering/mcmc/Kmeans/main_outputs/optimal_k_silhouette_results.csv"
-write_csv(silhouette_results_df, results_filename)
+results_filename <- file.path(main_output_dir, "optimal_k_silhouette_results.csv")
+write.csv(silhouette_results_df, results_filename, row.names = FALSE)
 print(paste("Optimal K analysis results saved to", results_filename))
 
 print("--- Script finished. ---") 
