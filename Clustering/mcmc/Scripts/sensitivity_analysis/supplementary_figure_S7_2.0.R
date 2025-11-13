@@ -1,4 +1,4 @@
-# MCMC K-Means Clustering Analysis
+# MCMC K-Means Clustering Analysis for Supplementary Figure S7 2.0
 
 # --- 1. Load Libraries ---
 library(dplyr)
@@ -9,25 +9,25 @@ library(readr)
 
 # --- 2. Configuration ---
 N_MCMC_ITERATIONS <- 500 # Number of MCMC iterations 
-N_PRESYMP_SAMPLES <- 5000 # Number of samples for presymptomatic proportion estimation 
 set.seed(123) # For reproducibility
+
+# Define output directory for this specific analysis
+output_dir <- "Clustering/mcmc/Kmeans/S7_2.0_outputs"
+dir.create(output_dir, showWarnings = FALSE, recursive = TRUE)
 
 
 # --- 3. Load Data ---
 # Load the new long-format parameter data and transmission routes
 params_long_df <- read_csv("Clustering/mcmc/Kmeans/data/pathogen_params.csv")
 transmission_df <- read_csv("Clustering/mcmc/Kmeans/data/transmission_route.csv")
-presym_dist_df <- read_csv("Clustering/mcmc/Kmeans/data/pathogen_presym.csv")
 
-# Filter for the specific pathogens of interest from the image
+# Filter for the specific pathogens of interest for this supplementary figure
 pathogens_of_interest <- c(
-  "COVID-19_WT", "COVID-19_A", "COVID-19_D", "COVID-19_O", "Ebola", 
-  "Marburg", "Lassa", "CCHF", "Nipah", "Zika", "Mpox", "H1N1_18", 
-  "H2N2", "H3N2", "H1N1_09", "H5N1", "SARS", "MERS"
+  "COVID-19_WT", "COVID-19_D", "COVID-19_O", "Ebola", 
+  "Marburg", "Mpox", "H1N1_18", "H1N1_09", "SARS", "MERS"
 )
 params_long_df <- params_long_df %>% filter(Pathogen_Name %in% pathogens_of_interest)
 transmission_df <- transmission_df %>% filter(Pathogen_Name %in% pathogens_of_interest)
-presym_dist_df <- presym_dist_df %>% filter(Pathogen_Name %in% pathogens_of_interest)
 
 
 # Optional: Quick check of the data
@@ -86,6 +86,7 @@ get_gamma_params_from_mean_ci <- function(mean_val, lower_ci, upper_ci) {
     return(list(shape = shape, rate = rate))
 }
 
+
 # --- NEW BOOTSTRAP AGGREGATION SAMPLING FUNCTION ---
 # This function uses bootstrap aggregation to create a robust parameter estimate for each MCMC iteration.
 # It addresses concerns about overemphasizing single studies (whether outliers or precise-but-biased)
@@ -123,7 +124,7 @@ sample_parameter_bootstrap_aggregation <- function(param_name, pathogen_name, da
                 sampled_val_internal <- rbeta(1, shape1 = beta_params$shape1, shape2 = beta_params$shape2)
             }
         }
-    } else if (param_name %in% c("R0", "SI")) {
+    } else if (param_name %in% c("R0", "SI", "IP", "LP", "InfP", "k")) {
         gamma_params <- get_gamma_params_from_mean_ci(mean_val, lower_ci, upper_ci)
         if (!is.na(gamma_params$shape) && !is.na(gamma_params$rate)) {
             sampled_val_internal <- rgamma(1, shape = gamma_params$shape, rate = gamma_params$rate)
@@ -150,163 +151,11 @@ sample_parameter_bootstrap_aggregation <- function(param_name, pathogen_name, da
   
   if (param_name == "CFR") {
     final_value <- pmax(0, pmin(1, final_value))
-  } else if (param_name %in% c("R0", "SI")) {
+  } else if (param_name %in% c("R0", "SI", "IP", "LP", "InfP", "k")) {
     final_value <- pmax(0.00001, final_value)
   }
   
   return(final_value)
-}
-
-
-get_full_dist_params_from_presym <- function(study_row) {
-  if (is.null(study_row) || nrow(study_row) == 0) {
-    return(list(family = NA, params = list()))
-  }
-
-  family <- study_row$FullDist_Family
-  raw_params <- list()
-
-  for (i in 1:2) {
-    param_name_col <- paste0("FullDist_Param", i, "_Name")
-    param_val_col <- paste0("FullDist_Param", i, "_Value")
-    
-    if (!is.na(study_row[[param_name_col]]) && study_row[[param_name_col]] != "") {
-      param_name <- study_row[[param_name_col]]
-      param_val <- as.numeric(study_row[[param_val_col]])
-      raw_params[[param_name]] <- param_val
-    }
-  }
-
-  # Convert mean/sd to shape/rate for Gamma, etc. if needed
-  final_params <- raw_params
-  if (!is.na(family)) {
-    if (family == "Gamma") {
-      if (all(c("mean", "SD") %in% names(raw_params)) && !("shape" %in% names(raw_params))) {
-        mean_val <- raw_params$mean
-        sd_val <- raw_params$SD
-        if (!is.na(mean_val) && !is.na(sd_val) && sd_val > 0 && mean_val > 0) {
-          final_params$shape <- (mean_val / sd_val)^2
-          final_params$rate <- mean_val / (sd_val^2)
-          final_params$mean <- NULL; final_params$SD <- NULL
-        }
-      }
-    } else if (family == "Lognormal") {
-      if (all(c("mean", "SD") %in% names(raw_params)) && !("meanlog" %in% names(raw_params))) {
-        mean_val <- raw_params$mean
-        sd_val <- raw_params$SD
-        if(!is.na(mean_val) && !is.na(sd_val) && mean_val > 0 && sd_val > 0){
-          final_params$sdlog <- sqrt(log(sd_val^2 / mean_val^2 + 1))
-          final_params$meanlog <- log(mean_val) - 0.5 * final_params$sdlog^2
-          final_params$mean <- NULL; final_params$SD <- NULL
-        }
-      }
-    }
-  }
-
-  return(list(family = family, params = final_params))
-}
-
-
-get_dist_info_from_study_row <- function(study_row) {
-    if (is.null(study_row) || nrow(study_row) == 0) return(list(family = NA, params = list()))
-
-    family_map <- c("rgamma" = "Gamma", "rlnorm" = "Lognormal", "rnorm" = "Normal")
-    family <- family_map[study_row$SamplingDist]
-    
-    if (is.na(family)) {
-        warning(paste("Unsupported distribution family:", study_row$SamplingDist, "for", study_row$Pathogen_Name))
-        return(list(family = NA, params = list()))
-    }
-    
-    mean_val <- as.numeric(study_row$ReportedValue)
-    lower_ci <- as.numeric(study_row$LowerBound)
-    upper_ci <- as.numeric(study_row$UpperBound)
-    
-    params <- list()
-    if (family == "Gamma") {
-        if (!is.na(mean_val) && !is.na(lower_ci) && !is.na(upper_ci)) {
-            gamma_params <- get_gamma_params_from_mean_ci(mean_val, lower_ci, upper_ci)
-            params$shape <- gamma_params$shape
-            params$rate <- gamma_params$rate
-        } else {
-            warning(paste("Incomplete info for Gamma dist for", study_row$Pathogen_Name))
-            return(list(family = family, params = list()))
-        }
-    } else if (family == "Lognormal") {
-        if (!is.na(lower_ci) && !is.na(upper_ci) && lower_ci > 0 && upper_ci > 0) {
-            log_lower <- log(lower_ci)
-            log_upper <- log(upper_ci)
-            sdlog <- (log_upper - log_lower) / (2 * qnorm(0.975))
-            meanlog <- (log_upper + log_lower) / 2
-            if(is.na(sdlog) || !is.finite(sdlog) || sdlog <= 0){
-                warning(paste("Could not derive valid sdlog for Lognormal for", study_row$Pathogen_Name))
-                return(list(family=family, params=list()))
-            }
-            params$meanlog <- meanlog
-            params$sdlog <- sdlog
-        } else {
-            warning(paste("Incomplete/invalid info for Lognormal dist for", study_row$Pathogen_Name))
-            return(list(family = family, params = list()))
-        }
-    } else if (family == "Normal") {
-        if (!is.na(mean_val) && !is.na(lower_ci) && !is.na(upper_ci)) {
-            sd_val <- (upper_ci - lower_ci) / (2 * qnorm(0.975))
-            if(is.na(sd_val) || !is.finite(sd_val) || sd_val <= 0){
-                warning(paste("Could not derive valid SD for Normal dist for", study_row$Pathogen_Name))
-                return(list(family=family, params=list()))
-            }
-            params$mean <- mean_val
-            params$SD <- sd_val
-        } else {
-             warning(paste("Incomplete info for Normal dist for", study_row$Pathogen_Name))
-             return(list(family = family, params = list()))
-        }
-    }
-    
-    return(list(family = family, params = params))
-}
-
-
-estimate_presymptomatic_proportion <- function(si_dist_info, ip_dist_info, n_samples = N_PRESYMP_SAMPLES) {
-  if (is.null(si_dist_info$family) || is.na(si_dist_info$family) || length(si_dist_info$params) == 0 ||
-      is.null(ip_dist_info$family) || is.na(ip_dist_info$family) || length(ip_dist_info$params) == 0) {
-    warning(paste("SI or IP distribution info incomplete for", si_dist_info$Pathogen_Name))
-    return(NA)
-  }
-
-  # Helper to create a quantile function from dist_info
-  get_q_func <- function(d_info) {
-    params <- d_info$params
-    switch(d_info$family,
-      "Lognormal" = function(p) qlnorm(p, meanlog = params$meanlog, sdlog = params$sdlog),
-      "Gamma"     = function(p) qgamma(p, shape = params$shape, rate = if (!is.null(params$rate)) params$rate else 1/params$scale),
-      "Normal"    = function(p) qnorm(p, mean = params$mean, sd = params$SD),
-      "Weibull"   = function(p) qweibull(p, shape = params$shape, scale = params$scale),
-      NULL
-    )
-  }
-
-  q_si <- get_q_func(si_dist_info)
-  q_ip <- get_q_func(ip_dist_info)
-
-  if (is.null(q_si) || is.null(q_ip)) {
-    warning(paste("Could not get quantile function for", si_dist_info$Pathogen_Name))
-    return(NA)
-  }
-
-  # --- Correlated Sampling using Quantiles ---
-  # This method assumes a positive rank correlation between SI and IP,
-  # addressing the unrealistic outcomes from the previous independent sampling method.
-  random_quantiles <- runif(n_samples)
-  
-  si_samples <- q_si(random_quantiles)
-  ip_samples <- q_ip(random_quantiles)
-  
-  # Truncate any negative samples, which can occur with Normal distributions
-  if(si_dist_info$family == "Normal") si_samples[si_samples < 0] <- 0
-  if(ip_dist_info$family == "Normal") ip_samples[ip_samples < 0] <- 0
-
-  mean(si_samples < ip_samples, na.rm = TRUE)
 }
 
 
@@ -328,39 +177,10 @@ for (iter in 1:N_MCMC_ITERATIONS) {
     r0_sampled <- sample_parameter_bootstrap_aggregation("R0", pathogen_name, params_long_df)
     si_clust_sampled <- sample_parameter_bootstrap_aggregation("SI", pathogen_name, params_long_df)
     cfr_sampled <- sample_parameter_bootstrap_aggregation("CFR", pathogen_name, params_long_df)
-    
-    # --- Estimate presymptomatic proportion (original logic retained) ---
-    presymp_prop_sampled <- NA
-    
-    # For influenza group, pool SI and IP studies for presymptomatic calculation
-    if (pathogen_name %in% flu_group) {
-      si_studies <- presym_dist_df %>% filter(Pathogen_Name %in% flu_group, Parameter == "SI")
-      ip_studies <- presym_dist_df %>% filter(Pathogen_Name %in% flu_group, Parameter == "IP")
-    } else {
-      si_studies <- presym_dist_df %>% filter(Pathogen_Name == pathogen_name, Parameter == "SI")
-      ip_studies <- presym_dist_df %>% filter(Pathogen_Name == pathogen_name, Parameter == "IP")
-    }
-    
-    if (nrow(si_studies) > 0 && nrow(ip_studies) > 0) {
-      si_study_sampled <- si_studies[sample(seq_len(nrow(si_studies)), 1), ]
-      ip_study_sampled <- ip_studies[sample(seq_len(nrow(ip_studies)), 1), ]
-      
-      si_full_dist_info <- get_full_dist_params_from_presym(si_study_sampled)
-      ip_full_dist_info <- get_full_dist_params_from_presym(ip_study_sampled)
-      
-      if (!is.null(si_full_dist_info) && !is.null(ip_full_dist_info) && 
-          !is.na(si_full_dist_info$family) && !is.na(ip_full_dist_info$family) &&
-          length(si_full_dist_info$params) > 0 && length(ip_full_dist_info$params) > 0) {
-        
-        si_full_dist_info$Pathogen_Name <- pathogen_name
-        ip_full_dist_info$Pathogen_Name <- pathogen_name
-        presymp_prop_sampled <- estimate_presymptomatic_proportion(si_full_dist_info, ip_full_dist_info)
-      } else {
-        warning(paste("Could not estimate presymptomatic proportion for", pathogen_name, "due to incomplete SI/IP dist info from presym studies."))
-      }
-    } else {
-        warning(paste("Not enough SI or IP studies in presym file to estimate presymptomatic proportion for", pathogen_name))
-    }
+    ip_sampled <- sample_parameter_bootstrap_aggregation("IP", pathogen_name, params_long_df)
+    lp_sampled <- sample_parameter_bootstrap_aggregation("LP", pathogen_name, params_long_df)
+    infp_sampled <- sample_parameter_bootstrap_aggregation("InfP", pathogen_name, params_long_df)
+    k_sampled <- sample_parameter_bootstrap_aggregation("k", pathogen_name, params_long_df)
     
     # --- Get transmission routes ---
     pathogen_routes <- transmission_df %>% filter(Pathogen_Name == pathogen_name)
@@ -374,7 +194,10 @@ for (iter in 1:N_MCMC_ITERATIONS) {
       R0_sampled = ifelse(is.null(r0_sampled) || is.na(r0_sampled) || !is.finite(r0_sampled), NA_real_, r0_sampled),
       SI_Clust_sampled = ifelse(is.null(si_clust_sampled) || is.na(si_clust_sampled) || !is.finite(si_clust_sampled), NA_real_, si_clust_sampled),
       CFR_sampled = ifelse(is.null(cfr_sampled) || is.na(cfr_sampled) || !is.finite(cfr_sampled), NA_real_, cfr_sampled),
-      Presymp_Proportion_sampled = ifelse(is.null(presymp_prop_sampled) || is.na(presymp_prop_sampled) || !is.finite(presymp_prop_sampled), NA_real_, presymp_prop_sampled),
+      IP_sampled = ifelse(is.null(ip_sampled) || is.na(ip_sampled) || !is.finite(ip_sampled), NA_real_, ip_sampled),
+      LP_sampled = ifelse(is.null(lp_sampled) || is.na(lp_sampled) || !is.finite(lp_sampled), NA_real_, lp_sampled),
+      InfP_sampled = ifelse(is.null(infp_sampled) || is.na(infp_sampled) || !is.finite(infp_sampled), NA_real_, infp_sampled),
+      k_sampled = ifelse(is.null(k_sampled) || is.na(k_sampled) || !is.finite(k_sampled), NA_real_, k_sampled),
       Route_resp = as.integer(pathogen_routes$Route_resp),
       Route_direct = as.integer(pathogen_routes$Route_direct),
       Route_sexual = as.integer(pathogen_routes$Route_sexual),
@@ -403,8 +226,8 @@ if (length(mcmc_results) > 0 && !all(sapply(mcmc_results, is.null))){
         # Example: Save the samples for now. Clustering can be a separate script or section.
 
         # --- 7. Save Results ---
-        write_csv(all_mcmc_samples_df, "Clustering/mcmc/Kmeans/main_outputs/mcmc_parameter_samples.csv")
-        print("MCMC parameter samples saved to Clustering/mcmc/Kmeans/main_outputs/mcmc_parameter_samples.csv")
+        write_csv(all_mcmc_samples_df, file.path(output_dir, "mcmc_parameter_samples.csv"))
+        print(paste("MCMC parameter samples saved to", file.path(output_dir, "mcmc_parameter_samples.csv")))
     } else {
         print("MCMC sampling completed, but no rows in the final combined data frame.")
     }
@@ -431,7 +254,10 @@ if (exists("all_mcmc_samples_df") && nrow(all_mcmc_samples_df) > 0) {
       R0_sampled, 
       SI_Clust_sampled, 
       CFR_sampled, 
-      Presymp_Proportion_sampled,
+      IP_sampled,
+      LP_sampled,
+      InfP_sampled,
+      k_sampled,
       Route_resp,
       Route_direct,
       Route_sexual,
@@ -439,36 +265,20 @@ if (exists("all_mcmc_samples_df") && nrow(all_mcmc_samples_df) > 0) {
       Route_vector
     )
 
-  # Handle NAs in the sampled parameters. Impute with the pathogen-specific median first,
-  # then use the overall median as a fallback for any remaining NAs.
-  numerical_param_cols <- c("R0_sampled", "SI_Clust_sampled", "CFR_sampled", "Presymp_Proportion_sampled")
-  
-  # Log initial NA counts
+  # Handle NAs in the sampled parameters (e.g., if Presymp_Proportion_sampled was NA for some)
+  # Impute with the overall median for that parameter column
+  numerical_param_cols <- c("R0_sampled", "SI_Clust_sampled", "CFR_sampled", "IP_sampled", "LP_sampled", "InfP_sampled", "k_sampled")
   for(col in numerical_param_cols){
     if(any(is.na(clustering_data_full[[col]]))){
       na_count <- sum(is.na(clustering_data_full[[col]]))
-      warning(paste("Column", col, "has", na_count, "NA values. Imputing with pathogen-specific median..."))
+      warning(paste("Column", col, "in all_mcmc_samples_df has", na_count, "NA values. Imputing with overall median before scaling."))
+      # Ensure the column is numeric before attempting median calculation if it became all NAs somehow
+      if(is.numeric(clustering_data_full[[col]])){
+        clustering_data_full[[col]][is.na(clustering_data_full[[col]])] <- median(clustering_data_full[[col]], na.rm = TRUE)
+      } else {
+        warning(paste("Column", col, "is not numeric or became all NAs, cannot impute with median."))
+      }
     }
-  }
-
-  # Step 1: Impute with pathogen-specific median
-  clustering_data_full <- clustering_data_full %>%
-    group_by(Pathogen_Name) %>%
-    mutate(across(all_of(numerical_param_cols), 
-                  ~ifelse(is.na(.), median(., na.rm = TRUE), .))) %>%
-    ungroup()
-
-  # After pathogen-specific imputation, remove any rows that still contain NA values.
-  # This occurs if a pathogen had all NA values for a parameter across all MCMC iterations,
-  # making imputation impossible without using a global metric.
-  rows_before_na_removal <- nrow(clustering_data_full)
-  clustering_data_full <- clustering_data_full %>%
-      filter(if_all(all_of(numerical_param_cols), ~!is.na(.)))
-  rows_after_na_removal <- nrow(clustering_data_full)
-
-  if (rows_before_na_removal > rows_after_na_removal) {
-      removed_count <- rows_before_na_removal - rows_after_na_removal
-      warning(paste(removed_count, "rows were removed from clustering data due to remaining NA values after pathogen-specific imputation."))
   }
   
   # Scale numerical features across the entire dataset
@@ -545,7 +355,10 @@ if (exists("all_mcmc_samples_df") && nrow(all_mcmc_samples_df) > 0) {
               R0_sampled = mean(R0_sampled, na.rm = TRUE),
               SI_Clust_sampled = mean(SI_Clust_sampled, na.rm = TRUE),
               CFR_sampled = mean(CFR_sampled, na.rm = TRUE),
-              Presymp_Proportion_sampled = mean(Presymp_Proportion_sampled, na.rm = TRUE),
+              IP_sampled = mean(IP_sampled, na.rm = TRUE),
+              LP_sampled = mean(LP_sampled, na.rm = TRUE),
+              InfP_sampled = mean(InfP_sampled, na.rm = TRUE),
+              k_sampled = mean(k_sampled, na.rm = TRUE),
               Route_resp = mean(Route_resp, na.rm=TRUE), # Mean for binary gives proportion
               Route_direct = mean(Route_direct, na.rm=TRUE),
               Route_sexual = mean(Route_sexual, na.rm=TRUE),
@@ -586,9 +399,9 @@ if (exists("all_mcmc_samples_df") && nrow(all_mcmc_samples_df) > 0) {
           
           print("Summary of Cluster Centroids (Mean and 95% CI across MCMC iterations):")
           print(as.data.frame(centroid_summary))
-          summary_filename <- paste0("Clustering/mcmc/Kmeans/main_outputs/cluster_centroids_summary_with_ci_k", CHOSEN_K, ".csv")
-          write_csv(centroid_summary, summary_filename)
-          print(paste("Cluster centroids summary saved to", summary_filename))
+          summary_filename <- paste0("cluster_centroids_summary_with_ci_k", CHOSEN_K, ".csv")
+          write_csv(centroid_summary, file.path(output_dir, summary_filename))
+          print(paste("Cluster centroids summary saved to", file.path(output_dir, summary_filename)))
       } else {
           print("No feature columns or data available for centroid summary.")
       }
@@ -604,9 +417,9 @@ if (exists("all_mcmc_samples_df") && nrow(all_mcmc_samples_df) > 0) {
             
           print("Modal cluster assignments for each pathogen:")
           print(modal_assignments)
-          modal_filename <- paste0("Clustering/mcmc/Kmeans/main_outputs/pathogen_modal_cluster_assignments_k", CHOSEN_K, ".csv")
-          write_csv(modal_assignments, modal_filename)
-          print(paste("Modal cluster assignments saved to", modal_filename))
+          modal_filename <- paste0("pathogen_modal_cluster_assignments_k", CHOSEN_K, ".csv")
+          write_csv(modal_assignments, file.path(output_dir, modal_filename))
+          print(paste("Modal cluster assignments saved to", file.path(output_dir, modal_filename)))
       } else {
           print("No assignment data available for modal cluster calculation.")
           modal_assignments <- data.frame(Pathogen_Name = character(), Modal_Cluster = integer(), Modal_Cluster_Count = integer())
@@ -619,7 +432,10 @@ if (exists("all_mcmc_samples_df") && nrow(all_mcmc_samples_df) > 0) {
               R0_mean_overall = mean(R0_sampled, na.rm = TRUE),
               SI_Clust_mean_overall = mean(SI_Clust_sampled, na.rm = TRUE),
               CFR_mean_overall = mean(CFR_sampled, na.rm = TRUE),
-              Presymp_Proportion_mean_overall = mean(Presymp_Proportion_sampled, na.rm = TRUE),
+              IP_mean_overall = mean(IP_sampled, na.rm = TRUE),
+              LP_mean_overall = mean(LP_sampled, na.rm = TRUE),
+              InfP_mean_overall = mean(InfP_sampled, na.rm = TRUE),
+              k_mean_overall = mean(k_sampled, na.rm = TRUE),
               Route_resp_mean = mean(Route_resp, na.rm=TRUE), # Mean for binary gives proportion
               Route_direct_mean = mean(Route_direct, na.rm=TRUE),
               Route_sexual_mean = mean(Route_sexual, na.rm=TRUE),
@@ -629,7 +445,7 @@ if (exists("all_mcmc_samples_df") && nrow(all_mcmc_samples_df) > 0) {
           ) %>%
           left_join(modal_assignments, by = "Pathogen_Name")
 
-      plot_features_numerical <- c("R0_mean_overall", "SI_Clust_mean_overall", "CFR_mean_overall", "Presymp_Proportion_mean_overall")
+      plot_features_numerical <- c("R0_mean_overall", "SI_Clust_mean_overall", "CFR_mean_overall", "IP_mean_overall", "LP_mean_overall", "InfP_mean_overall", "k_mean_overall")
       plot_features_routes <- c("Route_resp_mean", "Route_direct_mean", "Route_sexual_mean", "Route_animal_mean", "Route_vector_mean")
 
       features_for_pca_plot <- pathogen_summary_for_plot %>%
@@ -672,8 +488,9 @@ if (exists("all_mcmc_samples_df") && nrow(all_mcmc_samples_df) > 0) {
             scale_color_brewer(palette = "Set1", name = "Modal Cluster") # Example palette
           
           print(pca_plot_modal)
-          ggsave(paste0("Clustering/mcmc/Kmeans/main_outputs/pca_modal_cluster_plot_k",CHOSEN_K,".png"), plot = pca_plot_modal, width=10, height=8)
-          print(paste0("PCA plot with modal cluster assignments saved to Clustering/mcmc/Kmeans/main_outputs/pca_modal_cluster_plot_k",CHOSEN_K,".png"))
+          pca_filename <- paste0("pca_modal_cluster_plot_k",CHOSEN_K,".png")
+          ggsave(file.path(output_dir, pca_filename), plot = pca_plot_modal, width=10, height=8)
+          print(paste0("PCA plot with modal cluster assignments saved to ", file.path(output_dir, pca_filename)))
           
           # Silhouette plot for an example MCMC iteration
           if (length(mcmc_iterations) > 0) {
@@ -696,8 +513,9 @@ if (exists("all_mcmc_samples_df") && nrow(all_mcmc_samples_df) > 0) {
                         sil_plot_example_iter <- fviz_silhouette(sil, ggtheme = theme_minimal()) +
                                               labs(title=paste("Silhouette Plot for K=", CHOSEN_K, "(Example MCMC Iteration:", example_iter_val, ")"))
                         print(sil_plot_example_iter)
-                        ggsave(paste0("Clustering/mcmc/Kmeans/main_outputs/silhouette_plot_k",CHOSEN_K,"_iter",example_iter_val,".png"), plot = sil_plot_example_iter, width=8, height=6)
-                        print(paste0("Silhouette plot for K=", CHOSEN_K, " saved for example iteration ", example_iter_val))
+                        sil_iter_filename <- paste0("silhouette_plot_k",CHOSEN_K,"_iter",example_iter_val,".png")
+                        ggsave(file.path(output_dir, sil_iter_filename), plot = sil_plot_example_iter, width=8, height=6)
+                        print(paste0("Silhouette plot for K=", CHOSEN_K, " saved for example iteration ", example_iter_val, " to ", file.path(output_dir, sil_iter_filename)))
                     }
                 } else {
                      print(paste("Kmeans failed for example iteration ", example_iter_val, ", skipping silhouette plot for it."))
@@ -802,7 +620,7 @@ if (exists("combined_assignments_df") && nrow(combined_assignments_df) > 0 &&
   
   print("Co-assignment matrix (first 6x6):")
   print(head(coassignment_matrix[,seq_len(min(6, ncol(coassignment_matrix)))]))
-  write.csv(coassignment_matrix, "Clustering/mcmc/Kmeans/main_outputs/coassignment_matrix.csv")
+  write.csv(coassignment_matrix, file.path(output_dir, "coassignment_matrix.csv"))
 
   # --- 9.2. Calculate Dissimilarity Matrix ---
   print("Calculating dissimilarity matrix...")
@@ -813,7 +631,7 @@ if (exists("combined_assignments_df") && nrow(combined_assignments_df) > 0 &&
 
   print("Dissimilarity matrix (first 6x6):")
   print(head(dissimilarity_matrix[,seq_len(min(6, ncol(dissimilarity_matrix)))]))
-  write.csv(dissimilarity_matrix, "Clustering/mcmc/Kmeans/main_outputs/dissimilarity_matrix.csv")
+  write.csv(dissimilarity_matrix, file.path(output_dir, "dissimilarity_matrix.csv"))
 
   # --- 9.3. Perform Hierarchical Clustering ---
   print("Performing hierarchical clustering...")
@@ -821,12 +639,60 @@ if (exists("combined_assignments_df") && nrow(combined_assignments_df) > 0 &&
   pathogen_dist <- as.dist(dissimilarity_matrix)
   hierarchical_clust <- hclust(pathogen_dist, method = "average") # Changed back to average
 
-  # --- 9.4. Plot Dendrogram (Revised with dendextend) ---
+  # --- 9.4. Find Optimal K for Consensus Clustering ---
+  print("--- Starting Optimal K Analysis for Consensus Clustering (Silhouette Method) ---")
+  
+  if (!requireNamespace("cluster", quietly = TRUE)) { install.packages("cluster", quiet = TRUE) }
+  if (!requireNamespace("ggplot2", quietly = TRUE)) { install.packages("ggplot2", quiet = TRUE) }
+  library(cluster)
+  library(ggplot2)
+  
+  k_range <- 2:10 # Range of K to test
+  avg_silhouette_widths <- numeric(length(k_range))
+  names(avg_silhouette_widths) <- k_range
+  
+  for (k in k_range) {
+    cluster_assignments <- cutree(hierarchical_clust, k = k)
+    silhouette_info <- silhouette(cluster_assignments, dmatrix = as.matrix(dissimilarity_matrix))
+    if (is.null(silhouette_info) || !is.matrix(silhouette_info) || nrow(silhouette_info) == 0) {
+        avg_width <- NA
+        warning(paste("Could not compute silhouette info for k =", k))
+    } else {
+        avg_width <- summary(silhouette_info)$avg.width
+    }
+    avg_silhouette_widths[as.character(k)] <- avg_width
+  }
+  
+  silhouette_results_df <- data.frame(K = k_range, Average_Silhouette_Width = avg_silhouette_widths)
+  
+  optimal_k <- silhouette_results_df$K[which.max(silhouette_results_df$Average_Silhouette_Width)]
+  if (length(optimal_k) == 0) {
+      warning("Could not determine optimal K. Defaulting to 4.")
+      optimal_k <- 4
+  }
+  print(paste("Optimal K determined as:", optimal_k))
+
+  optimal_k_plot <- ggplot(silhouette_results_df, aes(x = K, y = Average_Silhouette_Width)) +
+    geom_line(color = "steelblue", size = 1) + geom_point(color = "steelblue", size = 3) +
+    geom_point(data = silhouette_results_df[which.max(silhouette_results_df$Average_Silhouette_Width), ],
+               aes(x = K, y = Average_Silhouette_Width), color = "red", size = 5, shape = 8) +
+    scale_x_continuous(breaks = k_range) +
+    labs(title = "Optimal Number of Clusters (K)", x = "Number of Clusters (K)", y = "Average Silhouette Width") +
+    theme_minimal(base_size = 14)
+  
+  plot_filename <- file.path(output_dir, "optimal_k_plot.png")
+  ggsave(plot_filename, plot = optimal_k_plot, width = 8, height = 6)
+  print(paste("Optimal K plot saved to", plot_filename))
+  
+  results_filename <- file.path(output_dir, "optimal_k_silhouette_results.csv")
+  write.csv(silhouette_results_df, results_filename, row.names = FALSE)
+  print(paste("Optimal K analysis results saved to", results_filename))
+
+
+  # --- 9.5. Plot Dendrogram (Revised with dendextend) ---
   print("Plotting enhanced dendrogram with dendextend...")
   
-  # Define the number of consensus clusters (K) and a color palette before plotting.
-  # This value is also used in section 9.5 to cut the tree.
-  K_CONSENSUS <- 4
+  K_CONSENSUS <- optimal_k
   if (!requireNamespace("RColorBrewer", quietly = TRUE)) { install.packages("RColorBrewer", quiet = TRUE) }
   library(RColorBrewer)
   
@@ -848,7 +714,7 @@ if (exists("combined_assignments_df") && nrow(combined_assignments_df) > 0 &&
   dend_colored <- set(dend_colored, "labels_cex", 0.7) # Adjust label size
   dend_colored <- set(dend_colored, "branches_lwd", 3) # Adjust branch line width
   
-  png_filename <- paste0("Clustering/mcmc/Kmeans/figures/figure.2", ".png")
+  png_filename <- file.path(output_dir, "figure.S7_2.0.png")
   png(png_filename, width=1200, height=800, units="px", res=100)
   par(mar = c(5, 4, 4, 10)) # Adjust right margin for labels
   plot(dend_colored, horiz = TRUE, 
@@ -858,23 +724,44 @@ if (exists("combined_assignments_df") && nrow(combined_assignments_df) > 0 &&
   dev.off()
   print(paste("Colored consensus dendrogram saved to", png_filename))
 
-  # --- 9.5. Extract Consensus Cluster Assignments ---
-  # User should inspect the dendrogram to choose K_consensus
-  # K_CONSENSUS <- 6 # This is now defined in section 9.4 before the dendrogram plot.
+  # --- 9.6. Extract Consensus Cluster Assignments ---
   print(paste("Cutting tree to get", K_CONSENSUS, "consensus clusters..."))
   consensus_clusters <- cutree(hierarchical_clust, k = K_CONSENSUS)
   consensus_assignments_df <- data.frame(Pathogen_Name = names(consensus_clusters),
                                          Consensus_Cluster = consensus_clusters)
   print("Consensus cluster assignments:")
   print(consensus_assignments_df)
-  write.csv(consensus_assignments_df, paste0("Clustering/mcmc/Kmeans/main_outputs/consensus_cluster_assignments_k", K_CONSENSUS, ".csv"))
+  write.csv(consensus_assignments_df, file.path(output_dir, paste0("consensus_cluster_assignments_k", K_CONSENSUS, ".csv")))
+  
+  # --- 9.7. Silhouette Plot for Consensus Clustering ---
+  if (requireNamespace("cluster", quietly = TRUE) && requireNamespace("factoextra", quietly = TRUE)) {
+      library(cluster)
+      library(factoextra)
+      
+      print("Generating silhouette plot for consensus clustering...")
+      
+      # Use the dissimilarity matrix directly
+      sil_consensus <- silhouette(consensus_clusters, dmatrix = dissimilarity_matrix)
+      
+      sil_plot_consensus <- fviz_silhouette(sil_consensus, ggtheme = theme_minimal()) +
+          labs(title = paste("Silhouette Plot for Consensus Clustering (K=", K_CONSENSUS, ")"))
+          
+      print(sil_plot_consensus)
+      
+      sil_plot_filename <- file.path(output_dir, paste0("silhouette_plot_consensus_k", K_CONSENSUS, ".png"))
+      ggsave(sil_plot_filename, plot = sil_plot_consensus, width = 8, height = 6)
+      print(paste("Consensus silhouette plot saved to", sil_plot_filename))
+  } else {
+      print("Packages 'cluster' or 'factoextra' not installed. Skipping consensus silhouette plot.")
+  }
 
-  # --- 9.6. Characterize Consensus Clusters ---
+  # --- 9.8. Characterize Consensus Clusters ---
   print("Characterizing consensus clusters (means and 95% CIs from all_mcmc_samples_df)...")
   
   # Select the numerical and route columns to summarize from all_mcmc_samples_df
   # These are the original sampled values, not the means from previous steps.
-  params_to_summarize <- c("R0_sampled", "SI_Clust_sampled", "CFR_sampled", "Presymp_Proportion_sampled",
+  params_to_summarize <- c("R0_sampled", "SI_Clust_sampled", "CFR_sampled",
+                           "IP_sampled", "LP_sampled", "InfP_sampled", "k_sampled",
                            "Route_resp", "Route_direct", "Route_sexual", "Route_animal", "Route_vector")
 
   # Join consensus assignments with the full MCMC samples
@@ -909,8 +796,9 @@ if (exists("combined_assignments_df") && nrow(combined_assignments_df) > 0 &&
       final_consensus_summary_df <- Reduce(function(x, y) full_join(x, y, by = "Consensus_Cluster"), consensus_cluster_summary_list)
       print("Summary of Consensus Cluster Characteristics (Mean, 95% CI, Median, SD):")
       print(as.data.frame(final_consensus_summary_df))
-      write_csv(final_consensus_summary_df, paste0("Clustering/mcmc/Kmeans/main_outputs/consensus_clusters_summary_k", K_CONSENSUS, ".csv"))
-      print(paste0("Consensus clusters summary saved to Clustering/mcmc/Kmeans/main_outputs/consensus_clusters_summary_k", K_CONSENSUS, ".csv"))
+      summary_filename <- paste0("consensus_clusters_summary_k", K_CONSENSUS, ".csv")
+      write_csv(final_consensus_summary_df, file.path(output_dir, summary_filename))
+      print(paste0("Consensus clusters summary saved to ", file.path(output_dir, summary_filename)))
     } else {
       print("No parameters were summarized for consensus clusters.")
     }
