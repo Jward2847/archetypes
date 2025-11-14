@@ -15,7 +15,7 @@ install_and_load <- function(packages) {
 required_packages <- c(
   "dplyr", "readr", "ggplot2", "factoextra", "ggrepel", 
   "cluster", "dendextend", "RColorBrewer", "future", "furrr",
-  "patchwork", "ggplotify"
+  "patchwork", "ggplotify", "reshape2"
 )
 install_and_load(required_packages)
 
@@ -26,7 +26,7 @@ plan(multisession)
 
 
 # --- 2. Configuration ---
-N_MCMC_ITERATIONS <- 5000 # Number of MCMC iterations 
+N_MCMC_ITERATIONS <- 100 # Number of MCMC iterations 
 N_PRESYMP_SAMPLES <- 5000 # Number of samples for presymptomatic proportion estimation 
 MCMC_SEED <- 123 # Seed for reproducibility of the MCMC parameter sampling
 CLUSTERING_SEED <- 456 # Seed for reproducibility of the K-means clustering
@@ -930,6 +930,58 @@ if (exists("all_iteration_assignments") && nrow(all_iteration_assignments) > 0 &
   pathogen_dist <- as.dist(dissimilarity_matrix)
   hierarchical_clust <- hclust(pathogen_dist, method = "average") # Changed back to average
 
+  # --- 9.3b. Co-assignment Heatmap (ggplot2 version) ---
+  print("Generating co-assignment heatmap with ggplot2...")
+  
+  # Calculate co-assignment probability matrix
+  coassignment_prob_matrix <- coassignment_matrix / num_mcmc_iterations
+  
+  # Reorder matrix based on hierarchical clustering
+  hc_order <- hierarchical_clust$order
+  ordered_pathogen_names <- pathogen_names[hc_order]
+  coassignment_prob_matrix_ordered <- coassignment_prob_matrix[ordered_pathogen_names, ordered_pathogen_names]
+  
+  # Use full pathogen names for labels
+  pathogen_names_short_ordered <- rownames(coassignment_prob_matrix_ordered)
+  pathogen_names_full_ordered <- pathogen_full_name_map[pathogen_names_short_ordered]
+  pathogen_names_full_ordered[is.na(pathogen_names_full_ordered)] <- pathogen_names_short_ordered[is.na(pathogen_names_full_ordered)]
+  
+  rownames(coassignment_prob_matrix_ordered) <- pathogen_names_full_ordered
+  colnames(coassignment_prob_matrix_ordered) <- pathogen_names_full_ordered
+  
+  # Melt for ggplot2
+  if (!requireNamespace("reshape2", quietly = TRUE)) { install.packages("reshape2", quiet = TRUE) }
+  melted_coassign <- reshape2::melt(coassignment_prob_matrix_ordered)
+  
+  # Ensure Var1 and Var2 are factors with the correct order for plotting
+  melted_coassign$Var1 <- factor(melted_coassign$Var1, levels = pathogen_names_full_ordered)
+  melted_coassign$Var2 <- factor(melted_coassign$Var2, levels = rev(pathogen_names_full_ordered)) # Reverse order for y-axis
+  
+  # Create the heatmap
+  coassignment_heatmap_S5 <- ggplot(melted_coassign, aes(x = Var1, y = Var2, fill = value)) +
+    geom_tile(color = "white") +
+    geom_text(aes(label = round(value, 2), color = value > 0.5), size = 2) +
+    scale_fill_viridis_c(name = "Co-assignment\nProbability", limits = c(0, 1)) +
+    scale_color_manual(values = c("white", "black"), guide = "none") +
+    labs(
+      title = "",
+      x = NULL,
+      y = NULL,
+      tag = "B"
+    ) +
+    theme_minimal(base_size = 10) +
+    theme(
+      axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1, size=8),
+      axis.text.y = element_text(size=8),
+      axis.ticks = element_blank(),
+      plot.title = element_text(face = "bold"),
+      panel.grid = element_blank()
+    )
+  
+  coassignment_heatmap_filename <- "Clustering/mcmc/Kmeans/figures/coassignment_heatmap_S5.png"
+  ggsave(coassignment_heatmap_filename, plot = coassignment_heatmap_S5, width = 8, height = 7, bg = "white")
+  print(paste("Co-assignment heatmap saved to", coassignment_heatmap_filename))
+
   # --- 9.3a. Find Optimal K for Consensus Clusters (Silhouette Method) ---
   print("--- Starting Optimal K Analysis (Silhouette Method) ---")
   if (!requireNamespace("cluster", quietly = TRUE)) { install.packages("cluster", quiet = TRUE) }
@@ -1033,16 +1085,16 @@ if (exists("all_iteration_assignments") && nrow(all_iteration_assignments) > 0 &
          main = "", 
          xlab = "Dissimilarity (1 - Proportion Co-assigned)")
   })
-  dendro_ggplot <- as.ggplot(dendro_grob) + labs(tag = "B")
+  dendro_ggplot <- as.ggplot(dendro_grob) + labs(tag = "C")
 
   # --- 9.4b. Combine plots with patchwork and save ---
   if (!requireNamespace("patchwork", quietly = TRUE)) { install.packages("patchwork", quiet = TRUE) }
   library(patchwork)
   
-  combined_plot <- optimal_k_plot / dendro_ggplot + plot_layout(heights = c(1, 1.5))
+  combined_plot <- (optimal_k_plot + coassignment_heatmap_S5) / dendro_ggplot + plot_layout(heights = c(1, 1.5))
   
   combined_filename <- "Clustering/mcmc/Kmeans/figures/figure.S5.png"
-  ggsave(combined_filename, plot = combined_plot, width = 8, height = 10, bg = "white")
+  ggsave(combined_filename, plot = combined_plot, width = 12, height = 12, bg = "white")
   print(paste("Combined plot saved to", combined_filename))
 
 

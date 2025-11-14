@@ -67,7 +67,7 @@ COVID-19_D,SI,Heiden and Buchholz 2022,Mod,Germany,4.19,Mean,95CI,4.16,4.22,rgam
 COVID-19_O,SI,Xu et al. 2023,SR,,3.21,Mean,95CI,2.94,3.48,rgamma,,
 Ebola,SI,Nash et al. 2024,SR,,15.4,Mean,95CI,13.2,17.5,rgamma,,
 Ebola,SI,Wong et al. 2017,SR,2013-2016 Epidemic,14.35,Median,IQR,12.28,16.35,rlnorm,,
-Marburg,SI,Qian et al. 2023,SR,,9.2,Mean,95CI,0.576,17.824,rgamma,,
+Marburg,SI,Qian et al. 2023,SR,,9.2,Mean,95CI,2.78,18.98,rgamma,,
 Lassa,SI,Our study,,,11.8,Mean,95CI,1.4,43,rgamma,,
 Lassa,SI,Zhao et al. 2020,Mod,,7.8,Mean,,,,rgamma,,
 CCHF,SI,Our study,Mod,,12,Mean,95CI,3,27.2,rgamma,,

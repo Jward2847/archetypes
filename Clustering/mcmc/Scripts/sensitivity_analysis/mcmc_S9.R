@@ -14,7 +14,8 @@ install_and_load <- function(packages) {
 # List of required packages
 required_packages <- c(
   "dplyr", "readr", "ggplot2", "factoextra", "ggrepel", 
-  "cluster", "dendextend", "RColorBrewer", "future", "furrr"
+  "cluster", "dendextend", "RColorBrewer", "future", "furrr",
+  "patchwork", "ggplotify"
 )
 install_and_load(required_packages)
 
@@ -909,19 +910,15 @@ if (exists("all_iteration_assignments") && nrow(all_iteration_assignments) > 0 &
       title = "",
       subtitle = "",
       x = "Number of Clusters (K)",
-      y = "Average Silhouette Width"
+      y = "Average Silhouette Width",
+      tag = "A"
     ) +
     theme_minimal(base_size = 14) +
     theme(plot.title = element_text(face = "bold"))
   
-  print(optimal_k_plot)
+  # The plot is not printed/saved here anymore, but combined later.
   
-  # Save the plot and results
-  # Note: The figure number S5 is based on the original separate script.
-  plot_filename_optimal_k <- "Clustering/mcmc/Kmeans/figures/figure.S9_SP.png"
-  ggsave(plot_filename_optimal_k, plot = optimal_k_plot, width = 8, height = 6)
-  print(paste("Optimal K plot saved to", plot_filename_optimal_k))
-  
+  # Save the results data
   results_filename_optimal_k <- "Clustering/mcmc/Kmeans/S9_outputs/optimal_k_silhouette_results.csv"
   write.csv(silhouette_results_df, results_filename_optimal_k, row.names = FALSE)
   print(paste("Optimal K analysis results saved to", results_filename_optimal_k))
@@ -960,15 +957,27 @@ if (exists("all_iteration_assignments") && nrow(all_iteration_assignments) > 0 &
   dend_colored <- set(dend_colored, "labels_cex", 0.7) # Adjust label size
   dend_colored <- set(dend_colored, "branches_lwd", 3) # Adjust branch line width
   
-  png_filename <- "Clustering/mcmc/Kmeans/figures/figure.S9.png"
-  png(png_filename, width=1200, height=800, units="px", res=100)
-  par(mar = c(5, 4, 4, 10)) # Adjust right margin for labels
-  plot(dend_colored, horiz = TRUE, 
-       main = paste(""), 
-       xlab = "Dissimilarity (1 - Proportion Co-assigned)")
+  # Convert the base R dendrogram plot to a ggplot object
+  if (!requireNamespace("ggplotify", quietly = TRUE)) { install.packages("ggplotify", quiet = TRUE) }
+  library(ggplotify)
+  dendro_grob <- as.grob(~{
+    par(mar = c(5, 4, 4, 10)) # Adjust right margin for labels
+    plot(dend_colored, horiz = TRUE, 
+         main = "", 
+         xlab = "Dissimilarity (1 - Proportion Co-assigned)")
+  })
+  dendro_ggplot <- as.ggplot(dendro_grob) + labs(tag = "B")
 
-  dev.off()
-  print(paste("Colored consensus dendrogram saved to", png_filename))
+  # --- 9.4b. Combine plots with patchwork and save ---
+  if (!requireNamespace("patchwork", quietly = TRUE)) { install.packages("patchwork", quiet = TRUE) }
+  library(patchwork)
+  
+  combined_plot <- optimal_k_plot / dendro_ggplot + plot_layout(heights = c(1, 1.5))
+  
+  combined_filename <- "Clustering/mcmc/Kmeans/figures/figure.S9.png"
+  ggsave(combined_filename, plot = combined_plot, width = 8, height = 10, bg = "white")
+  print(paste("Combined plot saved to", combined_filename))
+
 
   # --- 9.5. Extract Consensus Cluster Assignments ---
   # User should inspect the dendrogram to choose K_consensus
