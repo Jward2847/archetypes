@@ -14,7 +14,7 @@ install_and_load <- function(packages) {
 # List of required packages
 required_packages <- c(
   "dplyr", "readr", "ggplot2", "factoextra", "ggrepel", 
-  "cluster", "dendextend", "RColorBrewer", "future", "furrr"
+  "cluster", "dendextend", "RColorBrewer", "future", "furrr", "patchwork", "tibble", "ggplotify"
 )
 install_and_load(required_packages)
 
@@ -25,7 +25,7 @@ plan(multisession)
 
 
 # --- 2. Configuration ---
-N_MCMC_ITERATIONS <- 500 # Number of MCMC iterations 
+N_MCMC_ITERATIONS <- 5000 # Number of MCMC iterations 
 N_PRESYMP_SAMPLES <- 5000 # Number of samples for presymptomatic proportion estimation 
 MCMC_SEED <- 123 # Seed for reproducibility of the MCMC parameter sampling
 CLUSTERING_SEED <- 456 # Seed for reproducibility of the K-means clustering
@@ -63,8 +63,7 @@ presym_dist_df <- presym_dist_df %>% filter(Pathogen_Name %in% pathogens_of_inte
 
 # Function to derive parameters for rbeta by matching quantiles of the 95% CI
 get_beta_params_from_ci <- function(lower_ci, upper_ci, mean_val) {
-    min_param_val <- 1e-6
-
+    
     # Objective function to minimize: squared error between target CIs and beta quantiles
     objective_beta <- function(params, lower_ci, upper_ci) {
         # Use exp() to ensure parameters are positive, a common practice in optimization
@@ -112,8 +111,7 @@ get_beta_params_from_ci <- function(lower_ci, upper_ci, mean_val) {
 
 # Function to derive parameters for rgamma by matching quantiles of the 95% CI
 get_gamma_params_from_ci <- function(lower_ci, upper_ci, mean_val) {
-    min_param_val <- 1e-6
-
+    
     # Objective function to minimize for gamma
     objective_gamma <- function(params, lower_ci, upper_ci) {
         shape <- exp(params[1])
@@ -211,7 +209,7 @@ get_gamma_params_from_mean_ci_fallback <- function(mean_val, lower_ci, upper_ci)
 # by synthesizing evidence from all available studies in each sampling step.
 sample_parameter_bootstrap_aggregation <- function(param_name, pathogen_name, data_df) {
   # 1. Filter for all studies for the given pathogen and parameter
-  studies <- data_df %>% filter(Pathogen_Name == pathogen_name, Parameter == param_name)
+  studies <- data_df %>% filter(.data$Pathogen_Name == pathogen_name, .data$Parameter == param_name)
   if (nrow(studies) == 0) return(NA)
 
   # 2. Bootstrap: Resample studies with replacement. If only 1 study, it will be used.
@@ -465,11 +463,11 @@ run_single_mcmc_iteration <- function(iter_num, .progress = FALSE) {
     presymp_prop_sampled <- NA
     
     if (pathogen_name %in% flu_group) {
-      si_studies <- presym_dist_df %>% filter(Pathogen_Name %in% flu_group, Parameter == "SI")
-      ip_studies <- presym_dist_df %>% filter(Pathogen_Name %in% flu_group, Parameter == "IP")
+      si_studies <- presym_dist_df %>% filter(.data$Pathogen_Name %in% flu_group, .data$Parameter == "SI")
+      ip_studies <- presym_dist_df %>% filter(.data$Pathogen_Name %in% flu_group, .data$Parameter == "IP")
     } else {
-      si_studies <- presym_dist_df %>% filter(Pathogen_Name == pathogen_name, Parameter == "SI")
-      ip_studies <- presym_dist_df %>% filter(Pathogen_Name == pathogen_name, Parameter == "IP")
+      si_studies <- presym_dist_df %>% filter(.data$Pathogen_Name == pathogen_name, .data$Parameter == "SI")
+      ip_studies <- presym_dist_df %>% filter(.data$Pathogen_Name == pathogen_name, .data$Parameter == "IP")
     }
     
     if (nrow(si_studies) > 0 && nrow(ip_studies) > 0) {
@@ -494,14 +492,14 @@ run_single_mcmc_iteration <- function(iter_num, .progress = FALSE) {
     }
     
     # --- Get transmission routes ---
-    pathogen_routes <- transmission_df %>% filter(Pathogen_Name == pathogen_name)
+    pathogen_routes <- transmission_df %>% filter(.data$Pathogen_Name == pathogen_name)
     if(nrow(pathogen_routes) == 0){
         warning(paste("No transmission route data for pathogen:", pathogen_name))
         pathogen_routes <- data.frame(Route_resp=NA, Route_direct=NA, Route_sexual=NA, Route_animal=NA, Route_vector=NA)
     }
 
     # Return a single row data.frame (tibble)
-    tibble(
+    tibble::tibble(
       Pathogen_Name = pathogen_name,
       R0_sampled = ifelse(is.null(r0_sampled) || !is.finite(r0_sampled), NA_real_, r0_sampled),
       SI_Clust_sampled = ifelse(is.null(si_clust_sampled) || !is.finite(si_clust_sampled), NA_real_, si_clust_sampled),
@@ -646,7 +644,7 @@ if (exists("all_mcmc_samples_df") && nrow(all_mcmc_samples_df) > 0) {
     if (is.null(kmeans_result)) return(NULL)
     
     # Get assignments
-    assignments_df <- tibble(
+    assignments_df <- tibble::tibble(
       MCMC_Iteration = iter_val,
       Pathogen_Name = current_iter_data_scaled$Pathogen_Name,
       Cluster_Assigned = kmeans_result$cluster
@@ -930,7 +928,7 @@ if (exists("all_iteration_assignments") && nrow(all_iteration_assignments) > 0 &
   # --- 9.2. Calculate Dissimilarity Matrix ---
   print("Calculating dissimilarity matrix...")
   # N_MCMC_ITERATIONS is defined at the top of the script
-  dissimilarity_matrix <- 1 - (coassignment_matrix / N_MCMC_ITERATIONS) 
+  dissimilarity_matrix <- 1 - (coassignment_matrix / num_mcmc_iterations) 
   # Ensure diagonal is 0 after division, if any NA from 0/0 (though N_MCMC_ITERATIONS is likely >0)
   diag(dissimilarity_matrix) <- 0 
 
@@ -958,7 +956,7 @@ if (exists("all_iteration_assignments") && nrow(all_iteration_assignments) > 0 &
   for (k in k_range) {
     cluster_assignments <- cutree(hierarchical_clust, k = k)
     # The silhouette function can take the original distance matrix directly.
-    silhouette_info <- silhouette(cluster_assignments, dmatrix = dissimilarity_matrix)
+    silhouette_info <- silhouette(cluster_assignments, pathogen_dist)
     
     if (is.null(silhouette_info) || !is.matrix(silhouette_info) || nrow(silhouette_info) == 0) {
         avg_width <- NA
@@ -997,19 +995,15 @@ if (exists("all_iteration_assignments") && nrow(all_iteration_assignments) > 0 &
       title = "",
       subtitle = "",
       x = "Number of Clusters (K)",
-      y = "Average Silhouette Width"
+      y = "Average Silhouette Width",
+      tag = "A"
     ) +
     theme_minimal(base_size = 14) +
     theme(plot.title = element_text(face = "bold"))
   
-  print(optimal_k_plot)
+  # print(optimal_k_plot)
   
-  # Save the plot and results
-  # Note: The figure number S5 is based on the original separate script.
-  plot_filename_optimal_k <- "Clustering/mcmc/Kmeans/figures/fig_S6_SP.png"
-  ggsave(plot_filename_optimal_k, plot = optimal_k_plot, width = 8, height = 6)
-  print(paste("Optimal K plot saved to", plot_filename_optimal_k))
-  
+  # Save the results data
   results_filename_optimal_k <- "Clustering/mcmc/Kmeans/S6_outputs/optimal_k_silhouette_results.csv"
   write.csv(silhouette_results_df, results_filename_optimal_k, row.names = FALSE)
   print(paste("Optimal K analysis results saved to", results_filename_optimal_k))
@@ -1024,8 +1018,8 @@ if (exists("all_iteration_assignments") && nrow(all_iteration_assignments) > 0 &
     K_CONSENSUS <- optimal_k_value
     print(paste("Using optimal K=", K_CONSENSUS, "for consensus clustering."))
   } else {
-    K_CONSENSUS <- 4 # Fallback value
-    warning("Optimal K could not be determined. Falling back to K=4 for consensus clustering.")
+    K_CONSENSUS <- 6 # Fallback value for S6 which is k=6
+    warning("Optimal K could not be determined. Falling back to K=6 for consensus clustering.")
   }
   if (!requireNamespace("RColorBrewer", quietly = TRUE)) { install.packages("RColorBrewer", quiet = TRUE) }
   library(RColorBrewer)
@@ -1048,15 +1042,27 @@ if (exists("all_iteration_assignments") && nrow(all_iteration_assignments) > 0 &
   dend_colored <- set(dend_colored, "labels_cex", 0.7) # Adjust label size
   dend_colored <- set(dend_colored, "branches_lwd", 3) # Adjust branch line width
   
-  png_filename <- "Clustering/mcmc/Kmeans/figures/figure.S6.png"
-  png(png_filename, width=1200, height=800, units="px", res=100)
-  par(mar = c(5, 4, 4, 10)) # Adjust right margin for labels
-  plot(dend_colored, horiz = TRUE, 
-       main = paste(""), 
-       xlab = "Dissimilarity (1 - Proportion Co-assigned)")
+  # Convert the base R dendrogram plot to a ggplot object
+  if (!requireNamespace("ggplotify", quietly = TRUE)) { install.packages("ggplotify", quiet = TRUE) }
+  library(ggplotify)
+  dendro_grob <- as.grob(~{
+    par(mar = c(5, 4, 4, 10)) # Adjust right margin for labels
+    plot(dend_colored, horiz = TRUE, 
+         main = "", 
+         xlab = "Dissimilarity (1 - Proportion Co-assigned)")
+  })
+  dendro_ggplot <- as.ggplot(dendro_grob) + labs(tag = "B")
 
-  dev.off()
-  print(paste("Colored consensus dendrogram saved to", png_filename))
+  # --- 9.4b. Combine plots with patchwork and save ---
+  if (!requireNamespace("patchwork", quietly = TRUE)) { install.packages("patchwork", quiet = TRUE) }
+  library(patchwork)
+  
+  combined_plot <- optimal_k_plot / dendro_ggplot + plot_layout(heights = c(1, 1.5))
+  
+  combined_filename <- "Clustering/mcmc/Kmeans/figures/figure.2.png"
+  ggsave(combined_filename, plot = combined_plot, width = 8, height = 10, bg = "white")
+  print(paste("Combined plot saved to", combined_filename))
+
 
   # --- 9.5. Extract Consensus Cluster Assignments ---
   # User should inspect the dendrogram to choose K_consensus
