@@ -25,7 +25,7 @@ plan(multisession)
 
 
 # --- 2. Configuration ---
-N_MCMC_ITERATIONS <- 100 # Number of MCMC iterations 
+N_MCMC_ITERATIONS <- 5000 # Number of MCMC iterations 
 N_PRESYMP_SAMPLES <- 5000 # Number of samples for presymptomatic proportion estimation 
 MCMC_SEED <- 123 # Seed for reproducibility of the MCMC parameter sampling
 CLUSTERING_SEED <- 456 # Seed for reproducibility of the K-means clustering
@@ -972,13 +972,14 @@ if (exists("all_iteration_assignments") && nrow(all_iteration_assignments) > 0 &
   # Create the heatmap
   coassignment_heatmap <- ggplot(melted_coassign, aes(x = Var1, y = Var2, fill = value)) +
     geom_tile(color = "white") +
-    geom_text(aes(label = round(value, 2), color = value > 0.5), size = 4) +
+    geom_text(aes(label = round(value, 2), color = value > 0.5), size = 3) +
     scale_fill_viridis_c(name = "Co-assignment\nProbability", limits = c(0, 1)) +
     scale_color_manual(values = c("white", "black"), guide = "none") +
     labs(
       title = "",
       x = NULL,
-      y = NULL
+      y = NULL,
+      tag = "B"
     ) +
     theme_minimal(base_size = 10) +
     theme(
@@ -1104,17 +1105,55 @@ if (exists("all_iteration_assignments") && nrow(all_iteration_assignments) > 0 &
          main = "", 
          xlab = "Dissimilarity (1 - Proportion Co-assigned)")
   })
-  dendro_ggplot <- as.ggplot(dendro_grob) + labs(tag = "B")
+  dendro_ggplot <- as.ggplot(dendro_grob) + labs(tag = "C")
 
   # --- 9.4b. Combine plots with patchwork and save ---
   if (!requireNamespace("patchwork", quietly = TRUE)) { install.packages("patchwork", quiet = TRUE) }
   library(patchwork)
   
-  combined_plot <- optimal_k_plot / dendro_ggplot + plot_layout(heights = c(1, 1.5))
+  combined_plot <- (optimal_k_plot + coassignment_heatmap) / dendro_ggplot + plot_layout(heights = c(1, 1.5))
   
   combined_filename <- "Clustering/mcmc/Kmeans/figures/figure.2.png"
-  ggsave(combined_filename, plot = combined_plot, width = 8, height = 10, bg = "white")
+  ggsave(combined_filename, plot = combined_plot, width = 12, height = 10, bg = "white")
   print(paste("Combined plot saved to", combined_filename))
+
+
+  # --- 9.4c. Generate and save dendrograms for K=4, 5, 6 ---
+  print("Generating dendrograms for K=4, 5, 6...")
+  
+  k_values_for_dendro <- c(4, 5, 6)
+  dendro_plot_list <- list()
+  
+  for (k_val in k_values_for_dendro) {
+    
+    cluster_colors_k <- brewer.pal(n = max(3, k_val), name = "Set2")
+    if (k_val > length(cluster_colors_k)) {
+        cluster_colors_k <- rep(cluster_colors_k, length.out = k_val)
+    }
+    
+    dend_colored_k <- color_branches(dend, k = k_val, col = cluster_colors_k[1:k_val])
+    dend_colored_k <- set(dend_colored_k, "labels_cex", 0.7)
+    dend_colored_k <- set(dend_colored_k, "branches_lwd", 3) # Match original plot
+    
+    dendro_grob_k <- as.grob(~{
+      par(mar = c(5, 4, 4, 10)) # Adjust right margin for labels
+      plot(dend_colored_k, horiz = TRUE, 
+           main = paste0("K = ", k_val), 
+           xlab = "Dissimilarity (1 - Proportion Co-assigned)")
+    })
+    
+    dendro_ggplot_k <- as.ggplot(dendro_grob_k)
+    dendro_plot_list[[as.character(k_val)]] <- dendro_ggplot_k
+  }
+  
+  if (length(dendro_plot_list) == 3) {
+    # Combine plots with K=4 and K=5 on top row, K=6 on bottom row
+    combined_dendro_plot <- (dendro_plot_list[["4"]] + dendro_plot_list[["5"]]) / (dendro_plot_list[["6"]] + plot_spacer())
+    
+    dendro_figure_filename <- "Clustering/mcmc/Kmeans/figures/figure.2_dendro.png"
+    ggsave(dendro_figure_filename, plot = combined_dendro_plot, width = 12, height = 10, bg = "white")
+    print(paste("Combined dendrogram plot for K=4,5,6 saved to", dendro_figure_filename))
+  }
 
 
   # --- 9.5. Extract Consensus Cluster Assignments ---

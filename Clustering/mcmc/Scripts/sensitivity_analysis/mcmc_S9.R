@@ -26,7 +26,7 @@ plan(multisession)
 
 
 # --- 2. Configuration ---
-N_MCMC_ITERATIONS <- 500 # Number of MCMC iterations 
+N_MCMC_ITERATIONS <- 5000 # Number of MCMC iterations 
 MCMC_SEED <- 123 # Seed for reproducibility of the MCMC parameter sampling
 CLUSTERING_SEED <- 456 # Seed for reproducibility of the K-means clustering
 set.seed(MCMC_SEED) # Set seed for the MCMC part
@@ -788,7 +788,19 @@ if (exists("all_iteration_assignments") && nrow(all_iteration_assignments) > 0 &
     "Zika" = "ZIKV",
     "SARS" = "SARS-CoV-1",
     "MERS" = "MERS-CoV",
-    "CCHF" = "CCHFV"
+    "CCHF" = "CCHFV",
+    "HIV" = "HIV",
+    "Cholera" = "V. cholerae",
+    "Measles" = "Measles virus",
+    "Norovirus" = "Norovirus",
+    "SFTS" = "SFTS virus",
+    "EVA71" = "Enterovirus A71",
+    "hMPV" = "hMPV",
+    "Plague" = "Y. pestis",
+    "Smallpox" = "Variola virus",
+    "Chikungunya" = "Chikungunya virus",
+    "RVFV" = "RVFV",
+    "Anthrax" = "B. anthracis"
   )
   
   pathogen_names <- sort(unique(all_iteration_assignments$Pathogen_Name))
