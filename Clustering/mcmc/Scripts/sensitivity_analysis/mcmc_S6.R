@@ -14,7 +14,7 @@ install_and_load <- function(packages) {
 # List of required packages
 required_packages <- c(
   "dplyr", "readr", "ggplot2", "factoextra", "ggrepel", 
-  "cluster", "dendextend", "RColorBrewer", "future", "furrr", "patchwork", "tibble", "ggplotify", "reshape2"
+  "cluster", "dendextend", "RColorBrewer", "future", "furrr", "patchwork", "tibble", "ggplotify", "reshape2", "purrr"
 )
 install_and_load(required_packages)
 
@@ -25,8 +25,8 @@ plan(multisession)
 
 
 # --- 2. Configuration ---
-N_MCMC_ITERATIONS <- 5000 # Number of MCMC iterations 
-N_PRESYMP_SAMPLES <- 5000 # Number of samples for presymptomatic proportion estimation 
+N_MCMC_ITERATIONS <- 500 # Number of MCMC iterations 
+N_PRESYMP_SAMPLES <- 1000 # Number of samples for presymptomatic proportion estimation 
 MCMC_SEED <- 123 # Seed for reproducibility of the MCMC parameter sampling
 CLUSTERING_SEED <- 456 # Seed for reproducibility of the K-means clustering
 set.seed(MCMC_SEED) # Set seed for the MCMC part
@@ -208,44 +208,38 @@ get_gamma_params_from_mean_ci_fallback <- function(mean_val, lower_ci, upper_ci)
 # It addresses concerns about overemphasizing single studies (whether outliers or precise-but-biased)
 # by synthesizing evidence from all available studies in each sampling step.
 sample_parameter_bootstrap_aggregation <- function(param_name, pathogen_name, data_df) {
-  # 1. Filter for all studies for the given pathogen and parameter
-  studies <- data_df %>% filter(.data$Pathogen_Name == pathogen_name, .data$Parameter == param_name)
-  if (nrow(studies) == 0) return(NA)
+  studies <- data_df %>%
+    filter(.data$Pathogen_Name == pathogen_name, .data$Parameter == param_name)
+  if (nrow(studies) == 0) return(NA_real_)
 
-  # 2. Bootstrap: Resample studies with replacement. If only 1 study, it will be used.
+  # Bootstrap studies (by row index)
   if (nrow(studies) > 1) {
-      bootstrapped_indices <- sample(seq_len(nrow(studies)), size = nrow(studies), replace = TRUE)
-      bootstrapped_studies <- studies[bootstrapped_indices, ]
+    boot_idx <- sample(seq_len(nrow(studies)), size = nrow(studies), replace = TRUE)
+    boot_studies <- studies[boot_idx, ]
   } else {
-      bootstrapped_studies <- studies
+    boot_studies <- studies
   }
 
-  # 3. Generate one sample from each study in the bootstrapped set
-  samples <- apply(bootstrapped_studies, 1, function(study_row) {
-    mean_val <- as.numeric(study_row["ReportedValue"])
-    lower_ci <- as.numeric(study_row["LowerBound"])
-    upper_ci <- as.numeric(study_row["UpperBound"])
+  samples <- apply(boot_studies, 1, function(study_row) {
+    mean_val  <- as.numeric(study_row["ReportedValue"])
+    lower_ci  <- as.numeric(study_row["LowerBound"])
+    upper_ci  <- as.numeric(study_row["UpperBound"])
     
-    # If CI is missing or invalid, fall back to the point estimate
-    if (is.na(lower_ci) || is.na(upper_ci) || lower_ci >= upper_ci) {
-        return(mean_val) # Return point estimate directly for this study
-    }
+    if (is.na(lower_ci) || is.na(upper_ci) || lower_ci >= upper_ci) return(mean_val)
     
-    sampled_val_internal <- NA
+    sampled_val_internal <- NA_real_
     
     if (param_name == "CFR") {
-        if (!is.na(mean_val) && mean_val > 0 && mean_val < 1 && !is.na(lower_ci) && !is.na(upper_ci) && lower_ci < upper_ci) {
-            beta_params <- get_beta_params_from_ci(lower_ci, upper_ci, mean_val)
-            if (!is.na(beta_params$shape1) && !is.na(beta_params$shape2)) {
-                sampled_val_internal <- rbeta(1, shape1 = beta_params$shape1, shape2 = beta_params$shape2)
-            }
+      a <- as.numeric(study_row["beta_shape1"])
+      b <- as.numeric(study_row["beta_shape2"])
+      if (!is.na(a) && !is.na(b) && a > 0 && b > 0) {
+        sampled_val_internal <- rbeta(1, a, b)
         }
-    } else if (param_name %in% c("R0", "SI", "k", "IP", "LP", "InfP")) {
-        if (!is.na(lower_ci) && !is.na(upper_ci) && lower_ci < upper_ci) {
-            gamma_params <- get_gamma_params_from_ci(lower_ci, upper_ci, mean_val)
-            if (!is.na(gamma_params$shape) && !is.na(gamma_params$rate)) {
-                sampled_val_internal <- rgamma(1, shape = gamma_params$shape, rate = gamma_params$rate)
-            }
+    } else if (param_name %in% c("R0","SI","k","IP","LP","InfP")) {
+      shape <- as.numeric(study_row["gamma_shape"])
+      rate  <- as.numeric(study_row["gamma_rate"])
+      if (!is.na(shape) && !is.na(rate) && shape > 0 && rate > 0) {
+        sampled_val_internal <- rgamma(1, shape = shape, rate = rate)
         }
     } else {
         sd_from_ci <- (upper_ci - lower_ci) / (2 * qnorm(0.975))
@@ -254,26 +248,22 @@ sample_parameter_bootstrap_aggregation <- function(param_name, pathogen_name, da
         }
     }
     
-    # Fallback to mean if sampling failed
     if (is.na(sampled_val_internal) || !is.finite(sampled_val_internal)) {
         return(mean_val)
     }
-    return(sampled_val_internal)
+    sampled_val_internal
   })
 
-  # 4. Aggregate the samples from the bootstrapped studies by taking the mean
   final_value <- mean(samples, na.rm = TRUE)
-  
-  # 5. Apply final constraints to the aggregated value to ensure plausibility
-  if (is.na(final_value)) return(NA)
+  if (is.na(final_value)) return(NA_real_)
   
   if (param_name == "CFR") {
     final_value <- pmax(0, pmin(1, final_value))
-  } else if (param_name %in% c("R0", "SI", "k", "IP", "LP", "InfP")) {
-    final_value <- pmax(0.00001, final_value)
+  } else if (param_name %in% c("R0","SI","k","IP","LP","InfP")) {
+    final_value <- pmax(1e-5, final_value)
   }
   
-  return(final_value)
+  final_value
 }
 
 
@@ -281,22 +271,15 @@ sample_parameter_bootstrap_aggregation <- function(param_name, pathogen_name, da
 # This function takes a dataframe of studies for a single parameter (e.g., all SI studies for a pathogen),
 # bootstraps them, and returns a list of distribution information for the bootstrapped set.
 sample_distributions_bootstrap <- function(studies_df) {
-  if (is.null(studies_df) || nrow(studies_df) == 0) return(list())
-
-  # Bootstrap: Resample studies with replacement. If only 1 study, it will be used.
+  if (nrow(studies_df) == 0) return(list())
+  # Bootstrap row indices
   if (nrow(studies_df) > 1) {
-      bootstrapped_indices <- sample(seq_len(nrow(studies_df)), size = nrow(studies_df), replace = TRUE)
-      bootstrapped_studies <- studies_df[bootstrapped_indices, ]
+    idx <- sample(seq_len(nrow(studies_df)), size = nrow(studies_df), replace = TRUE)
   } else {
-      bootstrapped_studies <- studies_df
+    idx <- 1L
   }
-
-  # Get distribution info for each bootstrapped study
-  dist_info_list <- purrr::map(seq_len(nrow(bootstrapped_studies)), function(i) {
-    get_full_dist_params_from_presym(bootstrapped_studies[i, ])
-  })
-  
-  return(dist_info_list)
+  # Just return the precomputed dist_info list
+  studies_df$dist_info[idx]
 }
 
 
@@ -409,58 +392,100 @@ get_dist_info_from_study_row <- function(study_row) {
 }
 
 
-estimate_presymptomatic_proportion <- function(si_dist_info_list, ip_dist_info_list, n_samples = N_PRESYMP_SAMPLES, pathogen_name_for_warning = "Unknown") {
+estimate_presymptomatic_proportion <- function(si_dist_info_list, ip_dist_info_list,
+                                               n_samples = N_PRESYMP_SAMPLES,
+                                               pathogen_name_for_warning = "Unknown") {
+
+  # Filter valid distributions
+  si_dist_info_list <- purrr::keep(si_dist_info_list,
+                                   ~ !is.null(.x) && !is.na(.x$family) && length(.x$params) > 0)
+  ip_dist_info_list <- purrr::keep(ip_dist_info_list,
+                                   ~ !is.null(.x) && !is.na(.x$family) && length(.x$params) > 0)
+
   if (length(si_dist_info_list) == 0 || length(ip_dist_info_list) == 0) {
-    warning(paste("SI or IP distribution list is empty for", pathogen_name_for_warning))
-    return(NA)
+    warning(paste("Could not create any valid quantile functions for", pathogen_name_for_warning))
+    return(NA_real_)
   }
 
-  # Helper to create a quantile function from dist_info
-  get_q_func <- function(d_info) {
-    if(is.null(d_info) || is.na(d_info$family) || length(d_info$params) == 0) return(NULL)
-    params <- d_info$params
+  u <- runif(n_samples)
+
+  # Helper: given one dist_info, vectorised quantiles
+  q_vec <- function(d_info, u) {
+    p <- d_info$params
     switch(d_info$family,
-      "Lognormal" = function(p) qlnorm(p, meanlog = params$meanlog, sdlog = params$sdlog),
-      "Gamma"     = function(p) qgamma(p, shape = params$shape, rate = if (!is.null(params$rate)) params$rate else 1/params$scale),
-      "Normal"    = function(p) qnorm(p, mean = params$mean, sd = params$SD),
-      "Weibull"   = function(p) qweibull(p, shape = params$shape, scale = params$scale),
-      NULL
+      "Lognormal" = qlnorm(u, meanlog = p$meanlog, sdlog = p$sdlog),
+      "Gamma"     = qgamma(u, shape = p$shape, rate = if (!is.null(p$rate)) p$rate else 1 / p$scale),
+      "Normal"    = qnorm(u, mean = p$mean, sd = p$SD),
+      "Weibull"   = qweibull(u, shape = p$shape, scale = p$scale),
+      rep(NA_real_, length(u))
     )
   }
 
-  # Create a list of quantile functions for SI and IP
-  q_si_list <- purrr::map(si_dist_info_list, get_q_func)
-  q_ip_list <- purrr::map(ip_dist_info_list, get_q_func)
+  # Build matrices: rows = samples, cols = studies
+  si_mat <- vapply(si_dist_info_list, function(d) q_vec(d, u), numeric(length(u)))
+  ip_mat <- vapply(ip_dist_info_list, function(d) q_vec(d, u), numeric(length(u)))
 
-  # Filter out any NULL functions that failed to be created
-  q_si_list <- purrr::compact(q_si_list)
-  q_ip_list <- purrr::compact(q_ip_list)
+  # Mixture = mean across studies
+  si_samples <- rowMeans(si_mat, na.rm = TRUE)
+  ip_samples <- rowMeans(ip_mat, na.rm = TRUE)
 
-  if (length(q_si_list) == 0 || length(q_ip_list) == 0) {
-    warning(paste("Could not create any valid quantile functions for", pathogen_name_for_warning))
-    return(NA)
-  }
-  
-  # --- Correlated Sampling using Quantiles from the mixture of distributions ---
-  random_quantiles <- runif(n_samples)
-  
-  # For each quantile, get a sample from each distribution in the list and average it
-  si_samples <- sapply(random_quantiles, function(u) {
-    mean(sapply(q_si_list, function(q_func) q_func(u)), na.rm = TRUE)
-  })
-  
-  ip_samples <- sapply(random_quantiles, function(u) {
-    mean(sapply(q_ip_list, function(q_func) q_func(u)), na.rm = TRUE)
-  })
-  
-  # Truncate any negative samples. This is a general check.
-  # A more robust approach would be to know which underlying distributions could be Normal.
-  # We assume the impact is small and a general truncation is acceptable.
   si_samples[si_samples < 0] <- 0
   ip_samples[ip_samples < 0] <- 0
 
   mean(si_samples < ip_samples, na.rm = TRUE)
-}
+  }
+
+
+# --- Pre-computation of Distribution Parameters ---
+# This is done once after all helper functions are defined to improve performance.
+
+# Precompute gamma / beta parameters once per study row for the main dataframe
+params_long_df <- params_long_df %>%
+  rowwise() %>%
+  mutate(
+    gamma_params = ifelse(
+      Parameter %in% c("R0", "SI", "k", "IP", "LP", "InfP") &
+        !is.na(ReportedValue) & !is.na(LowerBound) & !is.na(UpperBound),
+      list(get_gamma_params_from_ci(LowerBound, UpperBound, ReportedValue)),
+      list(NA)
+    ),
+    gamma_shape = ifelse(
+      Parameter %in% c("R0", "SI", "k", "IP", "LP", "InfP"),
+      if (!is.list(gamma_params) || is.null(gamma_params$shape)) NA_real_ else gamma_params$shape,
+      NA_real_
+    ),
+    gamma_rate = ifelse(
+      Parameter %in% c("R0", "SI", "k", "IP", "LP", "InfP"),
+      if (!is.list(gamma_params) || is.null(gamma_params$rate)) NA_real_ else gamma_params$rate,
+      NA_real_
+    ),
+    beta_params = ifelse(
+      Parameter == "CFR" &
+        !is.na(ReportedValue) & !is.na(LowerBound) & !is.na(UpperBound),
+      list(get_beta_params_from_ci(LowerBound, UpperBound, ReportedValue)),
+      list(NA)
+    ),
+    beta_shape1 = ifelse(
+      Parameter == "CFR",
+      if (!is.list(beta_params) || is.null(beta_params$shape1)) NA_real_ else beta_params$shape1,
+      NA_real_
+    ),
+    beta_shape2 = ifelse(
+      Parameter == "CFR",
+      if (!is.list(beta_params) || is.null(beta_params$shape2)) NA_real_ else beta_params$shape2,
+      NA_real_
+    )
+  ) %>%
+  ungroup() %>%
+  select(-gamma_params, -beta_params)
+
+# Precompute distribution parameters for presymptomatic estimation dataframe
+presym_dist_df <- presym_dist_df %>%
+  rowwise() %>%
+  mutate(
+    dist_info = list(get_full_dist_params_from_presym(cur_data()))
+  ) %>%
+  ungroup()
 
 
 # --- 5. Main MCMC Loop ---
@@ -576,6 +601,18 @@ if (nrow(all_mcmc_samples_df) > 0) {
     # --- 7. Save Results ---
     write_csv(all_mcmc_samples_df, "Clustering/mcmc/Kmeans/S6_outputs/mcmc_parameter_samples.csv")
     print("MCMC parameter samples saved to Clustering/mcmc/Kmeans/S6_outputs/mcmc_parameter_samples.csv")
+
+    # --- Summary of Presymptomatic Proportions ---
+    presym_pathogen_summary <- all_mcmc_samples_df %>%
+      group_by(Pathogen_Name) %>%
+      summarise(
+        presym_median = median(Presymp_Proportion_sampled, na.rm = TRUE),
+        presym_lower  = quantile(Presymp_Proportion_sampled, 0.025, na.rm = TRUE),
+        presym_upper  = quantile(Presymp_Proportion_sampled, 0.975, na.rm = TRUE)
+      )
+    print("--- Summary of Presymptomatic Proportions ---")
+    print(presym_pathogen_summary)
+
 } else {
     print("MCMC sampling did not produce any results.")
 }
@@ -599,7 +636,6 @@ if (exists("all_mcmc_samples_df") && nrow(all_mcmc_samples_df) > 0) {
       R0_sampled, 
       SI_Clust_sampled, 
       CFR_sampled, 
-      Presymp_Proportion_sampled,
       k_sampled,
       IP_sampled,
       LP_sampled,
@@ -613,7 +649,7 @@ if (exists("all_mcmc_samples_df") && nrow(all_mcmc_samples_df) > 0) {
 
   # Handle NAs in the sampled parameters. Impute with the pathogen-specific median first,
   # then use the overall median as a fallback for any remaining NAs.
-  numerical_param_cols <- c("R0_sampled", "SI_Clust_sampled", "CFR_sampled", "Presymp_Proportion_sampled", "k_sampled", "IP_sampled", "LP_sampled", "InfP_sampled")
+  numerical_param_cols <- c("R0_sampled", "SI_Clust_sampled", "CFR_sampled", "k_sampled", "IP_sampled", "LP_sampled", "InfP_sampled")
   
   # Log initial NA counts
   for(col in numerical_param_cols){
@@ -769,7 +805,6 @@ if (exists("all_mcmc_samples_df") && nrow(all_mcmc_samples_df) > 0) {
               R0_mean_overall = mean(R0_sampled, na.rm = TRUE),
               SI_Clust_mean_overall = mean(SI_Clust_sampled, na.rm = TRUE),
               CFR_mean_overall = mean(CFR_sampled, na.rm = TRUE),
-              Presymp_Proportion_mean_overall = mean(Presymp_Proportion_sampled, na.rm = TRUE),
               k_mean_overall = mean(k_sampled, na.rm = TRUE),
               IP_mean_overall = mean(IP_sampled, na.rm = TRUE),
               LP_mean_overall = mean(LP_sampled, na.rm = TRUE),
@@ -783,7 +818,7 @@ if (exists("all_mcmc_samples_df") && nrow(all_mcmc_samples_df) > 0) {
           ) %>%
           left_join(modal_assignments, by = "Pathogen_Name")
 
-      plot_features_numerical <- c("R0_mean_overall", "SI_Clust_mean_overall", "CFR_mean_overall", "Presymp_Proportion_mean_overall", "k_mean_overall", "IP_mean_overall", "LP_mean_overall", "InfP_mean_overall")
+      plot_features_numerical <- c("R0_mean_overall", "SI_Clust_mean_overall", "CFR_mean_overall", "k_mean_overall", "IP_mean_overall", "LP_mean_overall", "InfP_mean_overall")
       plot_features_routes <- c("Route_resp_mean", "Route_direct_mean", "Route_sexual_mean", "Route_animal_mean", "Route_vector_mean")
 
       features_for_pca_plot <- pathogen_summary_for_plot %>%
@@ -1205,7 +1240,7 @@ if (exists("all_iteration_assignments") && nrow(all_iteration_assignments) > 0 &
   
   # Select the numerical and route columns to summarize from all_mcmc_samples_df
   # These are the original sampled values, not the means from previous steps.
-  params_to_summarize <- c("R0_sampled", "SI_Clust_sampled", "CFR_sampled", "Presymp_Proportion_sampled",
+  params_to_summarize <- c("R0_sampled", "SI_Clust_sampled", "CFR_sampled",
                            "k_sampled", "IP_sampled", "LP_sampled", "InfP_sampled",
                            "Route_resp", "Route_direct", "Route_sexual", "Route_animal", "Route_vector")
 
@@ -1251,6 +1286,66 @@ if (exists("all_iteration_assignments") && nrow(all_iteration_assignments) > 0 &
   }
   
   print("Ensemble/Consensus Clustering Analysis finished.")
+
+  # --- 9.7. Estimate and Summarize Presymptomatic Transmission per Consensus Cluster ---
+  print("--- Starting Post-Clustering Presymptomatic Transmission Estimation ---")
+  
+  N_BOOTSTRAP_PRESAMP <- 1000 # Number of bootstrap iterations for CI estimation
+  unique_clusters <- sort(unique(consensus_assignments_df$Consensus_Cluster))
+  cluster_presymp_summary_list <- list()
+
+  for (k in unique_clusters) {
+    pathogens_in_cluster <- consensus_assignments_df %>%
+      filter(Consensus_Cluster == k) %>%
+      pull(Pathogen_Name)
+    
+    cluster_si_studies <- presym_dist_df %>% filter(Pathogen_Name %in% pathogens_in_cluster, Parameter == "SI")
+    cluster_ip_studies <- presym_dist_df %>% filter(Pathogen_Name %in% pathogens_in_cluster, Parameter == "IP")
+    
+    if (nrow(cluster_si_studies) == 0 || nrow(cluster_ip_studies) == 0) {
+      warning(paste("Cluster", k, "has insufficient SI or IP data for presymptomatic estimation. Pathogens:", paste(pathogens_in_cluster, collapse=", ")))
+      next
+    }
+    
+    # Bootstrap the estimation to get a credible interval
+    bootstrap_replicates <- replicate(N_BOOTSTRAP_PRESAMP, {
+      # Resample the full set of distributions for the cluster
+      boot_si_dist_info <- sample_distributions_bootstrap(cluster_si_studies)
+      boot_ip_dist_info <- sample_distributions_bootstrap(cluster_ip_studies)
+      
+      # Estimate proportion for this bootstrap sample
+      estimate_presymptomatic_proportion(
+        boot_si_dist_info, 
+        boot_ip_dist_info,
+        pathogen_name_for_warning = paste("Cluster", k)
+      )
+    })
+    
+    # Summarize the bootstrap replicates
+    cluster_presymp_summary_list[[as.character(k)]] <- tibble(
+      Consensus_Cluster = k,
+      Presymp_Median = median(bootstrap_replicates, na.rm = TRUE),
+      Presymp_LowerCI = quantile(bootstrap_replicates, 0.025, na.rm = TRUE),
+      Presymp_UpperCI = quantile(bootstrap_replicates, 0.975, na.rm = TRUE)
+    )
+  }
+  
+  if (length(cluster_presymp_summary_list) > 0) {
+    cluster_presymp_summary_df <- bind_rows(cluster_presymp_summary_list)
+    
+    # Create the final summary table where each pathogen inherits its cluster's profile
+    pathogen_presymp_summary <- consensus_assignments_df %>%
+      left_join(cluster_presymp_summary_df, by = "Consensus_Cluster")
+      
+    print("--- Derived Presymptomatic Transmission Profile per Pathogen (from Consensus Cluster) ---")
+    print(as.data.frame(pathogen_presymp_summary))
+    
+    # Optional: Save this summary
+    write_csv(pathogen_presymp_summary, paste0("Clustering/mcmc/Kmeans/S6_outputs/pathogen_presymp_summary_k", K_CONSENSUS, ".csv"))
+    
+  } else {
+    print("Could not generate any presymptomatic transmission summaries for the clusters.")
+  }
 
 } else {
   print("Skipping Ensemble/Consensus Clustering: 'all_iteration_assignments' or 'all_mcmc_samples_df' not found or empty.")
