@@ -277,6 +277,29 @@ sample_parameter_bootstrap_aggregation <- function(param_name, pathogen_name, da
 }
 
 
+# --- NEW BOOTSTRAP FUNCTION for Distributions ---
+# This function takes a dataframe of studies for a single parameter (e.g., all SI studies for a pathogen),
+# bootstraps them, and returns a list of distribution information for the bootstrapped set.
+sample_distributions_bootstrap <- function(studies_df) {
+  if (is.null(studies_df) || nrow(studies_df) == 0) return(list())
+
+  # Bootstrap: Resample studies with replacement. If only 1 study, it will be used.
+  if (nrow(studies_df) > 1) {
+      bootstrapped_indices <- sample(seq_len(nrow(studies_df)), size = nrow(studies_df), replace = TRUE)
+      bootstrapped_studies <- studies_df[bootstrapped_indices, ]
+  } else {
+      bootstrapped_studies <- studies_df
+  }
+
+  # Get distribution info for each bootstrapped study
+  dist_info_list <- purrr::map(seq_len(nrow(bootstrapped_studies)), function(i) {
+    get_full_dist_params_from_presym(bootstrapped_studies[i, ])
+  })
+  
+  return(dist_info_list)
+}
+
+
 get_full_dist_params_from_presym <- function(study_row) {
   if (is.null(study_row) || nrow(study_row) == 0) {
     return(list(family = NA, params = list()))
@@ -386,15 +409,15 @@ get_dist_info_from_study_row <- function(study_row) {
 }
 
 
-estimate_presymptomatic_proportion <- function(si_dist_info, ip_dist_info, n_samples = N_PRESYMP_SAMPLES) {
-  if (is.null(si_dist_info$family) || is.na(si_dist_info$family) || length(si_dist_info$params) == 0 ||
-      is.null(ip_dist_info$family) || is.na(ip_dist_info$family) || length(ip_dist_info$params) == 0) {
-    warning(paste("SI or IP distribution info incomplete for", si_dist_info$Pathogen_Name))
+estimate_presymptomatic_proportion <- function(si_dist_info_list, ip_dist_info_list, n_samples = N_PRESYMP_SAMPLES, pathogen_name_for_warning = "Unknown") {
+  if (length(si_dist_info_list) == 0 || length(ip_dist_info_list) == 0) {
+    warning(paste("SI or IP distribution list is empty for", pathogen_name_for_warning))
     return(NA)
   }
 
   # Helper to create a quantile function from dist_info
   get_q_func <- function(d_info) {
+    if(is.null(d_info) || is.na(d_info$family) || length(d_info$params) == 0) return(NULL)
     params <- d_info$params
     switch(d_info$family,
       "Lognormal" = function(p) qlnorm(p, meanlog = params$meanlog, sdlog = params$sdlog),
@@ -405,25 +428,36 @@ estimate_presymptomatic_proportion <- function(si_dist_info, ip_dist_info, n_sam
     )
   }
 
-  q_si <- get_q_func(si_dist_info)
-  q_ip <- get_q_func(ip_dist_info)
+  # Create a list of quantile functions for SI and IP
+  q_si_list <- purrr::map(si_dist_info_list, get_q_func)
+  q_ip_list <- purrr::map(ip_dist_info_list, get_q_func)
 
-  if (is.null(q_si) || is.null(q_ip)) {
-    warning(paste("Could not get quantile function for", si_dist_info$Pathogen_Name))
+  # Filter out any NULL functions that failed to be created
+  q_si_list <- purrr::compact(q_si_list)
+  q_ip_list <- purrr::compact(q_ip_list)
+
+  if (length(q_si_list) == 0 || length(q_ip_list) == 0) {
+    warning(paste("Could not create any valid quantile functions for", pathogen_name_for_warning))
     return(NA)
   }
-
-  # --- Correlated Sampling using Quantiles ---
-  # This method assumes a positive rank correlation between SI and IP,
-  # addressing the unrealistic outcomes from the previous independent sampling method.
+  
+  # --- Correlated Sampling using Quantiles from the mixture of distributions ---
   random_quantiles <- runif(n_samples)
   
-  si_samples <- q_si(random_quantiles)
-  ip_samples <- q_ip(random_quantiles)
+  # For each quantile, get a sample from each distribution in the list and average it
+  si_samples <- sapply(random_quantiles, function(u) {
+    mean(sapply(q_si_list, function(q_func) q_func(u)), na.rm = TRUE)
+  })
   
-  # Truncate any negative samples, which can occur with Normal distributions
-  if(si_dist_info$family == "Normal") si_samples[si_samples < 0] <- 0
-  if(ip_dist_info$family == "Normal") ip_samples[ip_samples < 0] <- 0
+  ip_samples <- sapply(random_quantiles, function(u) {
+    mean(sapply(q_ip_list, function(q_func) q_func(u)), na.rm = TRUE)
+  })
+  
+  # Truncate any negative samples. This is a general check.
+  # A more robust approach would be to know which underlying distributions could be Normal.
+  # We assume the impact is small and a general truncation is acceptable.
+  si_samples[si_samples < 0] <- 0
+  ip_samples[ip_samples < 0] <- 0
 
   mean(si_samples < ip_samples, na.rm = TRUE)
 }
@@ -462,6 +496,7 @@ run_single_mcmc_iteration <- function(iter_num, .progress = FALSE) {
     # --- Estimate presymptomatic proportion ---
     presymp_prop_sampled <- NA
     
+    # Get all relevant SI and IP studies, handling the influenza group special case
     if (pathogen_name %in% flu_group) {
       si_studies <- presym_dist_df %>% filter(.data$Pathogen_Name %in% flu_group, .data$Parameter == "SI")
       ip_studies <- presym_dist_df %>% filter(.data$Pathogen_Name %in% flu_group, .data$Parameter == "IP")
@@ -471,21 +506,19 @@ run_single_mcmc_iteration <- function(iter_num, .progress = FALSE) {
     }
     
     if (nrow(si_studies) > 0 && nrow(ip_studies) > 0) {
-      si_study_sampled <- si_studies[sample(seq_len(nrow(si_studies)), 1), ]
-      ip_study_sampled <- ip_studies[sample(seq_len(nrow(ip_studies)), 1), ]
+      # Bootstrap studies to get a list of distributions for SI and IP for this iteration
+      si_dist_info_list <- sample_distributions_bootstrap(si_studies)
+      ip_dist_info_list <- sample_distributions_bootstrap(ip_studies)
       
-      si_full_dist_info <- get_full_dist_params_from_presym(si_study_sampled)
-      ip_full_dist_info <- get_full_dist_params_from_presym(ip_study_sampled)
+      # Filter out any list elements that are invalid (e.g., from parsing failures)
+      si_dist_info_list <- si_dist_info_list[sapply(si_dist_info_list, function(d) !is.null(d) && !is.na(d$family) && length(d$params) > 0)]
+      ip_dist_info_list <- ip_dist_info_list[sapply(ip_dist_info_list, function(d) !is.null(d) && !is.na(d$family) && length(d$params) > 0)]
       
-      if (!is.null(si_full_dist_info) && !is.null(ip_full_dist_info) && 
-          !is.na(si_full_dist_info$family) && !is.na(ip_full_dist_info$family) &&
-          length(si_full_dist_info$params) > 0 && length(ip_full_dist_info$params) > 0) {
-        
-        si_full_dist_info$Pathogen_Name <- pathogen_name
-        ip_full_dist_info$Pathogen_Name <- pathogen_name
-        presymp_prop_sampled <- estimate_presymptomatic_proportion(si_full_dist_info, ip_full_dist_info)
+      if (length(si_dist_info_list) > 0 && length(ip_dist_info_list) > 0) {
+        # Estimate proportion using the bootstrapped lists of distributions
+        presymp_prop_sampled <- estimate_presymptomatic_proportion(si_dist_info_list, ip_dist_info_list, pathogen_name_for_warning = pathogen_name)
       } else {
-        warning(paste("Could not estimate presymptomatic proportion for", pathogen_name, "due to incomplete SI/IP dist info."))
+        warning(paste("Could not estimate presymptomatic proportion for", pathogen_name, "due to incomplete SI/IP dist info from bootstrapping."))
       }
     } else {
       warning(paste("Not enough SI or IP studies for", pathogen_name))
