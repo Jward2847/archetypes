@@ -1,15 +1,13 @@
 # The epidemiology of pathogens with pandemic potential: A review of key parameters and clustering analysis 
 
-This is the R script for the paper "The epidemiology of pathogens with pandemic potential: "A review of key parameters and clustering analysis" currently a preprint hosted at MedRxiv https://www.medrxiv.org/content/10.1101/2025.03.13.25323659v2. This project implements a Monte Carlo approach combined with K-means clustering to identify distinct pathogen archetypes based on epidemiological parameters. The analysis accounts for parameter uncertainty through probabilistic sampling and provides robust clustering results through ensemble methods. 
+This is the R script for the paper "The epidemiology of pathogens with pandemic potential: "A review of key parameters and clustering analysis" currently a preprint hosted at MedRxiv https://www.medrxiv.org/content/10.1101/2025.03.13.25323659v2.
+
+This project implements a Monte Carlo approach combined with K-means clustering to identify distinct pathogen archetypes based on epidemiological parameters. The analysis accounts for parameter uncertainty through probabilistic sampling and provides robust clustering results through ensemble methods. 
 
 ## Project Overview
 
-The goal is to classify infectious disease pathogens into distinct archetypes based on their epidemiological characteristics, including:
-- **R0 (Basic Reproduction Number)**: Transmission potential
-- **Serial Interval (SI)**: Time between symptom onset in successive cases
-- **Case Fatality Rate (CFR)**: Proportion of cases that result in death
-- **Presymptomatic Transmission Proportion**: Fraction of transmission occurring before symptom onset
-- **Transmission Route**:
+The goal is to classify infectious disease pathogens into distinct archetypes based on their epidemiological characteristics, including: reproduction number, dispersion parameter, serial interval, incubation period, latent period, infectious period, case fatality risk and transmission route.
+
   
 ## Project Structure and Workflow
 
@@ -24,11 +22,12 @@ This repository is organized into two main components:
 ## Clustering Analysis Scripts
 
 ### 1. Main Analysis (`Clustering/mcmc/Scripts/Main/`)
--   **`mcmc_Kmeans_analysis.R`**: Performs the complete MCMC K-means clustering analysis (K=6), including parameter sampling, per-iteration clustering, and consensus clustering.
--   **`find_optimal_K.R`**: Determines the optimal number of clusters (K) using the silhouette method based on the dissimilarity matrix from the main analysis.
+-   **`main_manuscript.R`**: Performs the complete MCMC K-means clustering analysis. This single script handles parameter sampling, performs clustering for each MCMC iteration, and then conducts an ensemble consensus clustering analysis. For the consensus clustering, it automatically determines the optimal number of clusters (K) using the silhouette method, and generates outputs for multiple K values (e.g., K=4, 5, 6) for robustness checking.
 
 ### 2. Sensitivity Analysis (`Clustering/mcmc/Scripts/sensitivity_analysis/`)
--   **`supplementary_figure_S6.R`**, **`supplementary_figure_S7.R`**, **`supplementary_figure_S9.R`**: These scripts test the robustness of the clustering results by varying the included pathogens and parameters, generating supplementary figures for this paper.
+-   **`S5-S8.R`**: Reducing input parameters to R, SI and CFR including/excluding the proportion of presymptomatic transmission. It generates supplementary figures S5, S6, S7, and S8.
+-   **`S9-S10.R`**: Assesses the clustering structure when including the proportion of presymptomatic transmission to the main parameters set. It generates supplementary figures S9 and S10.
+-   **`S11.R`**: Explores the clustering archetypes when the analysis is expanded to a larger set of 32 pathogens, using a reduced set of core parameters (R0, CFR, and IP). It generates supplementary figure S11.
 
 ## Parameter Estimation Scripts
 
@@ -41,81 +40,40 @@ This repository is organized into two main components:
 - **Location**: `param_estimation/Lassa/`
 - **`fit_lassa_si_distributions.R`**: Fits Gamma and Lognormal distributions to Lassa fever serial interval data to characterise the time between successive cases.
 
-### 3. Presymptomatic Transmission Estimation (Legacy)
-- **Location**: `param_estimation/old_presym/`
-- **Purpose**: Contains a collection of legacy scripts used to calculate the proportion of presymptomatic transmission for various pathogens (e.g., Ebola, MERS, SARS-CoV-2 variants).
-- **Method**: These scripts use probability density functions of the incubation period and serial interval to estimate the extent of transmission before symptom onset.
 
 ## Data Requirements
 
 ### Input Files
-- `pathogen_params_kmeans.csv`: Main parameter file used for the primary clustering analysis.
-- `pathogen_params_V2_extended.csv`: Contains additional parameters for the sensitivity analysis scripts.
-- `pathogen_params_sens.csv`: Includes additional pathogens for sensitivity analysis.
+- `pathogen_params.csv`: Main parameter file used for the primary clustering analysis.
+- `pathogen_presym.csv`: Parameter file used for presymptomatic transmission estimation, containing full distribution information for the serial interval (SI) and incubation period (IP).
+- `transmission_route.csv`: Contains the encoded transmission route data for each pathogen.
 
-### Parameter Structure
-Each pathogen requires:
-- **Clustered Parameters**: R0, SI, CFR with uncertainty information
-- **Full Distribution Parameters**: SI and IP distributions for presymptomatic calculation
-- **Transmission Routes**: The categorical transmission route data was encoded using one-hot encoding. Each potential route (e.g., respiratory, direct contact, vector-borne) was represented as a separate binary feature (1 for presence, 0 for absence). These indicators were treated as fixed parameters for each pathogen across all Monte Carlo simulations.
-- **Uncertainty Types**: Point estimates, confidence intervals, or ranges
-- **Sampling Distributions**: Normal, beta, gamma, lognormal, or uniform
-
-## Key Methodological Features
-
-### Uncertainty Handling
-- **Probabilistic Sampling**: Accounts for parameter uncertainty through MCMC
-- **Multiple Distribution Types**: Supports various uncertainty representations
-- **Robust Fallbacks**: Handles edge cases and missing data gracefully
-
-### Clustering Approach
-- **Ensemble Method**: Combines results across 5,000 MCMC iterations
-- **Consensus Clustering**: Uses hierarchical clustering on co-assignment frequencies
-- **Scaled Features**: Normalises numerical parameters for clustering
-- **Modal Assignments**: Determines most frequent cluster for each pathogen
-
-### Validation Methods
-- **Silhouette Analysis**: Evaluates clustering quality
-- **Sensitivity Testing**: Assesses robustness to parameter inclusion/exclusion
-- **Visual Assessment**: PCA plots and dendrograms for interpretation
-
-## Output Interpretation
-
-### Cluster Characteristics
-- **Centroids**: Mean parameter values for each cluster
-- **Confidence Intervals**: 95% CI across MCMC iterations
-- **Route Profiles**: Average transmission route patterns
-
-### Consensus Results
-- **Stable Assignments**: Pathogens consistently grouped together
-- **Cluster Stability**: Frequency of co-assignment across iterations
-- **Hierarchical Structure**: Dendrogram showing pathogen relationships
 
 ## Usage Instructions
 
 1. **Run Main Analysis**:
+   The entire main analysis, including MCMC sampling, per-iteration clustering, consensus clustering, and optimal K determination, is performed by a single script.
    ```r
-   source("Clustering/mcmc/mcmc_Kmeans_analysis.R")
+   source("Clustering/mcmc/Scripts/Main/main_manuscript.R")
    ```
 
-2. **Find Optimal K** (after main analysis):
+2. **Run Sensitivity Analysis**:
+   The sensitivity analyses are run from separate scripts in the `Clustering/mcmc/Scripts/sensitivity_analysis/` directory. For example:
    ```r
-   source("Clustering/mcmc/find_optimal_K.R")
-   ```
-
-3. **Run Sensitivity Analysis**:
-   ```r
-   source("Clustering/mcmc/mcmc_sensitivity_analyis.R")
+   source("Clustering/mcmc/Scripts/sensitivity_analysis/S5-S8.R")
    ```
 
 ## Dependencies
 
 Required R packages:
 - `dplyr`, `readr`: Data manipulation
-- `stats`: Statistical functions and clustering
+- `stats`: Statistical functions and clustering (base R)
 - `cluster`: Silhouette analysis
 - `ggplot2`, `factoextra`, `ggrepel`: Visualization
 - `dendextend`, `RColorBrewer`: Enhanced dendrograms
+- `future`, `furrr`: Parallel processing
+- `patchwork`, `ggplotify`: Combining and converting plots
+- `reshape2`: Data reshaping for plotting
 
 ## File Structure
 
