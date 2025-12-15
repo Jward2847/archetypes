@@ -2,11 +2,11 @@
 
 This is the R script for the paper "The epidemiology of pathogens with pandemic potential: "A review of key parameters and clustering analysis" currently a preprint hosted at MedRxiv https://www.medrxiv.org/content/10.1101/2025.03.13.25323659v2.
 
-This project implements a Monte Carlo approach combined with K-means clustering to identify distinct pathogen archetypes based on epidemiological parameters. The analysis accounts for parameter uncertainty through probabilistic sampling and provides robust clustering results through ensemble methods. 
+We use a Monte Carlo approach combined with K-means clustering to identify distinct pathogen archetypes based on epidemiological parameters. The analysis accounts for parameter uncertainty through probabilistic sampling and provides robust clustering results through ensemble methods. 
 
 ## Project Overview
 
-The goal is to classify infectious disease pathogens into distinct archetypes based on their epidemiological characteristics, including: reproduction number, dispersion parameter, serial interval, incubation period, latent period, infectious period, case fatality risk and transmission route.
+We aim to classify infectious disease pathogens into distinct archetypes based on their epidemiological characteristics, including: reproduction number, dispersion parameter, serial interval, incubation period, latent period, infectious period, case fatality risk and transmission route.
 
   
 ## Project Structure and Workflow
