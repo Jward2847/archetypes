@@ -33,13 +33,12 @@ This repository is organized into two main components:
 
 ### 1. CCHF R0 and Serial Interval Estimation
 - **Location**: `param_estimation/CCHF/`
-- **`CCHF_R_calc.R`**: Estimates the basic reproduction number (R0) for Crimean-Congo Haemorrhagic Fever (CCHF) from cluster size data using an MCMC approach.
-- **`Fit_CCHF_si_distributions.R`**: Fits parametric distributions (Gamma and Lognormal) to CCHF serial interval data to estimate its mean and uncertainty.
+- **`CCHF_R_calc.R`**: Estimates the basic reproduction number (R0) for Crimean-Congo Haemorrhagic Fever (CCHF) from cluster size data.
+- **`Fit_CCHF_si_distributions.R`**: Fits parametric distributions (Gamma and Lognormal) to time between successive cases.
 
 ### 2. Lassa Fever Serial Interval Estimation
 - **Location**: `param_estimation/Lassa/`
-- **`fit_lassa_si_distributions.R`**: Fits Gamma and Lognormal distributions to Lassa fever serial interval data to characterise the time between successive cases.
-
+- **`fit_lassa_si_distributions.R`**: Fits parametric distributions (Gamma and Lognormal) to time between successive cases.
 
 ## Data Requirements
 
