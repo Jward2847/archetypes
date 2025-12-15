@@ -20,8 +20,6 @@ required_packages <- c(
 install_and_load(required_packages)
 
 # Setup for parallel processing
-# Use multisession to run in parallel in the background, leaving the main R session responsive.
-# The number of workers will be half the available cores by default, which is a safe choice.
 plan(multisession)
 
 
@@ -33,11 +31,11 @@ set.seed(MCMC_SEED) # Set seed for the MCMC part
 
 
 # --- 3. Load Data ---
-# Load the new long-format parameter data and transmission routes
+# Load the parameter data and transmission routes
 params_long_df <- read_csv("Clustering/mcmc/Kmeans/data/pathogen_params.csv")
 transmission_df <- read_csv("Clustering/mcmc/Kmeans/data/transmission_route.csv")
 
-# Filter for the specific pathogens of interest from the image
+# Filter for the specific pathogens of interest 
 pathogens_of_interest <- c(
   "COVID-19_WT", "COVID-19_A", "COVID-19_D", "COVID-19_O", "Ebola", "Marburg", "Lassa", "CCHF", "Nipah", "Zika", "Mpox", 
   "H1N1_18", "H2N2", "H3N2", "H1N1_09", "H5N1", "SARS", "MERS", "HIV", "Cholera", "Measles", "Norovirus", "SFTS", 
@@ -47,7 +45,7 @@ params_long_df <- params_long_df %>% filter(Pathogen_Name %in% pathogens_of_inte
 transmission_df <- transmission_df %>% filter(Pathogen_Name %in% pathogens_of_interest)
 
 
-# Optional: Quick check of the data
+
 # print(head(params_long_df))
 # print(str(params_long_df))
 # print(head(transmission_df))
@@ -55,10 +53,9 @@ transmission_df <- transmission_df %>% filter(Pathogen_Name %in% pathogens_of_in
 
 # --- 4. Helper Functions ---
 
-# --- NEW Quantile-Matching Helper Functions for Beta and Gamma Distributions ---
+# ---  Quantile-Matching Helper Functions for Beta and Gamma Distributions ---
 # These functions use optimization to find distribution parameters that best match a given 95% CI.
-# This is more robust than methods based on the mean and an estimated standard deviation,
-# especially when the underlying distribution is skewed.
+
 
 # Function to derive parameters for rbeta by matching quantiles of the 95% CI
 get_beta_params_from_ci <- function(lower_ci, upper_ci, mean_val) {
@@ -154,7 +151,7 @@ get_gamma_params_from_ci <- function(lower_ci, upper_ci, mean_val) {
 }
 
 
-# --- FALLBACK Helper Functions (Original Methods) ---
+# --- FALLBACK Helper Functions  ---
 
 # Function to derive parameters for rbeta from mean and 95% CI
 get_beta_params_from_mean_ci_fallback <- function(mean_val, lower_ci, upper_ci, n_eff_guess = 1000) {
@@ -204,10 +201,8 @@ get_gamma_params_from_mean_ci_fallback <- function(mean_val, lower_ci, upper_ci)
     return(list(shape = shape, rate = rate))
 }
 
-# --- NEW BOOTSTRAP AGGREGATION SAMPLING FUNCTION ---
+# --- BOOTSTRAP AGGREGATION SAMPLING FUNCTION ---
 # This function uses bootstrap aggregation to create a robust parameter estimate for each MCMC iteration.
-# It addresses concerns about overemphasizing single studies (whether outliers or precise-but-biased)
-# by synthesizing evidence from all available studies in each sampling step.
 sample_parameter_bootstrap_aggregation <- function(param_name, pathogen_name, data_df) {
   # 1. Filter for all studies for the given pathogen and parameter
   studies <- data_df %>% filter(Pathogen_Name == pathogen_name, Parameter == param_name)
@@ -388,8 +383,6 @@ get_dist_info_from_study_row <- function(study_row) {
 
 
 # --- 5. Main MCMC Loop ---
-# This section is now parallelized for significant speed improvement.
-# It reframes the loop into a function that can be mapped across iterations.
 print("Starting parallel MCMC sampling...")
 
 # Helper function to run a single MCMC iteration for all pathogens
@@ -928,7 +921,6 @@ if (exists("all_iteration_assignments") && nrow(all_iteration_assignments) > 0 &
     theme_minimal(base_size = 14) +
     theme(plot.title = element_text(face = "bold"))
   
-  # The plot is not printed/saved here anymore, but combined later.
   
   # Save the results data
   results_filename_optimal_k <- "Clustering/mcmc/Kmeans/S11_outputs/optimal_k_silhouette_results.csv"

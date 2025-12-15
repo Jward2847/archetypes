@@ -20,8 +20,6 @@ required_packages <- c(
 install_and_load(required_packages)
 
 # Setup for parallel processing
-# Use multisession to run in parallel in the background, leaving the main R session responsive.
-# The number of workers will be half the available cores by default, which is a safe choice.
 plan(multisession)
 
 
@@ -33,11 +31,11 @@ set.seed(MCMC_SEED) # Set seed for the MCMC part
 
 
 # --- 3. Load Data ---
-# Load the new long-format parameter data and transmission routes
+# Load parameter data and transmission routes
 params_long_df <- read_csv("Clustering/mcmc/Kmeans/data/pathogen_params.csv")
 transmission_df <- read_csv("Clustering/mcmc/Kmeans/data/transmission_route.csv")
 
-# Filter for the specific pathogens of interest from the image
+# Filter pathogens of interest
 pathogens_of_interest <- c(
   "COVID-19_WT", "COVID-19_D", "COVID-19_O", "Ebola", "Marburg", "Mpox", 
   "H1N1_18", "H1N1_09", "SARS", "MERS"
@@ -46,7 +44,6 @@ params_long_df <- params_long_df %>% filter(Pathogen_Name %in% pathogens_of_inte
 transmission_df <- transmission_df %>% filter(Pathogen_Name %in% pathogens_of_interest)
 
 
-# Optional: Quick check of the data
 # print(head(params_long_df))
 # print(str(params_long_df))
 # print(head(transmission_df))
@@ -54,10 +51,9 @@ transmission_df <- transmission_df %>% filter(Pathogen_Name %in% pathogens_of_in
 
 # --- 4. Helper Functions ---
 
-# --- NEW Quantile-Matching Helper Functions for Beta and Gamma Distributions ---
+# --- Quantile-Matching Helper Functions for Beta and Gamma Distributions ---
 # These functions use optimization to find distribution parameters that best match a given 95% CI.
-# This is more robust than methods based on the mean and an estimated standard deviation,
-# especially when the underlying distribution is skewed.
+
 
 # Function to derive parameters for rbeta by matching quantiles of the 95% CI
 get_beta_params_from_ci <- function(lower_ci, upper_ci, mean_val) {
@@ -65,7 +61,7 @@ get_beta_params_from_ci <- function(lower_ci, upper_ci, mean_val) {
 
     # Objective function to minimize: squared error between target CIs and beta quantiles
     objective_beta <- function(params, lower_ci, upper_ci) {
-        # Use exp() to ensure parameters are positive, a common practice in optimization
+        # Use exp() to ensure parameters are positive
         shape1 <- exp(params[1])
         shape2 <- exp(params[2])
         if (is.na(shape1) || is.na(shape2) || !is.finite(shape1) || !is.finite(shape2)) return(1e10)
@@ -157,7 +153,6 @@ get_gamma_params_from_ci <- function(lower_ci, upper_ci, mean_val) {
 
 # Function to derive parameters for rbeta from mean and 95% CI
 get_beta_params_from_mean_ci_fallback <- function(mean_val, lower_ci, upper_ci, n_eff_guess = 1000) {
-    # This is a simplified approach. A robust version would use optimization.
     alpha <- mean_val * n_eff_guess
     beta <- (1 - mean_val) * n_eff_guess
     
@@ -203,16 +198,14 @@ get_gamma_params_from_mean_ci_fallback <- function(mean_val, lower_ci, upper_ci)
     return(list(shape = shape, rate = rate))
 }
 
-# --- NEW BOOTSTRAP AGGREGATION SAMPLING FUNCTION ---
+# --- BOOTSTRAP AGGREGATION SAMPLING FUNCTION ---
 # This function uses bootstrap aggregation to create a robust parameter estimate for each MCMC iteration.
-# It addresses concerns about overemphasizing single studies (whether outliers or precise-but-biased)
-# by synthesizing evidence from all available studies in each sampling step.
 sample_parameter_bootstrap_aggregation <- function(param_name, pathogen_name, data_df) {
   # 1. Filter for all studies for the given pathogen and parameter
   studies <- data_df %>% filter(Pathogen_Name == pathogen_name, Parameter == param_name)
   if (nrow(studies) == 0) return(NA)
 
-  # 2. Bootstrap: Resample studies with replacement. If only 1 study, it will be used.
+  # 2. Bootstrap: Resample studies with replacement. 
   if (nrow(studies) > 1) {
       bootstrapped_indices <- sample(seq_len(nrow(studies)), size = nrow(studies), replace = TRUE)
       bootstrapped_studies <- studies[bootstrapped_indices, ]
@@ -387,8 +380,6 @@ get_dist_info_from_study_row <- function(study_row) {
 
 
 # --- 5. Main MCMC Loop ---
-# This section is now parallelized for significant speed improvement.
-# It reframes the loop into a function that can be mapped across iterations.
 print("Starting parallel MCMC sampling...")
 
 # Helper function to run a single MCMC iteration for all pathogens
@@ -462,7 +453,7 @@ if (nrow(all_mcmc_samples_df) > 0) {
     print(paste("Generated", length(unique(all_mcmc_samples_df$MCMC_Iteration)), "valid sets of parameters for", length(unique(all_mcmc_samples_df$Pathogen_Name)), "pathogens."))
 
     # --- 6. Post-MCMC Analysis (Clustering) ---
-    # The results are already in a tidy data frame, ready for clustering.
+  
     
     # --- 7. Save Results ---
     write_csv(all_mcmc_samples_df, "Clustering/mcmc/Kmeans/main_outputs/mcmc_parameter_samples.csv")
@@ -839,7 +830,7 @@ if (exists("all_iteration_assignments") && nrow(all_iteration_assignments) > 0 &
     }
   }
   # Diagonal should be total number of iterations a pathogen was part of clustering
-  # For simplicity here, we assume all pathogens are in all iterations in combined_assignments_df.
+  # For simplicity , we assume all pathogens are in all iterations in combined_assignments_df.
   # If not, a pathogen-specific count would be more precise for the diagonal.
   diag(coassignment_matrix) <- num_mcmc_iterations 
   
